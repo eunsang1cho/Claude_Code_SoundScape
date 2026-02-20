@@ -1,5 +1,5 @@
 const db = require('./db');
-const { emptyBoard, placeStone, resolveBestMove, scoreBoard, toSGFCoord } = require('./goEngine');
+const { emptyBoard, placeStone, resolveBestMove, getDivineMove, scoreBoard, toSGFCoord } = require('./goEngine');
 
 // ELO 계산
 function calcElo(winnerElo, loserElo, kFactor = 32) {
@@ -54,18 +54,33 @@ function processTurn(game) {
   const votingCountry = game.current_turn === 'black' ? game.black_code : game.white_code;
 
   // 해당 국가의 투표 집계
+  // 동점 시: 최후점 우선 (MAX(voted_at) DESC)
   const voteCounts = db.prepare(`
-    SELECT x, y, COUNT(*) as count
+    SELECT x, y, COUNT(*) as count, MAX(voted_at) as latest_vote
     FROM votes
     WHERE game_id = ? AND move_number = ? AND country_code = ?
     GROUP BY x, y
-    ORDER BY count DESC
+    ORDER BY count DESC, latest_vote DESC
     LIMIT 10
   `).all(game.id, game.move_number, votingCountry);
 
   // Ko 체크용: 2수 전 보드 상태
   const prevBoardArr = game.prev_board_state ? JSON.parse(game.prev_board_state) : null;
-  const resolved = resolveBestMove(voteCounts, board, color, prevBoardArr);
+
+  // 신의 한수: 투표 0개일 때 랜덤 유효 착수
+  let isDivine = false;
+  let resolved;
+  if (voteCounts.length === 0) {
+    const divine = getDivineMove(board, color, prevBoardArr);
+    if (divine) {
+      resolved = { pass: false, x: divine.x, y: divine.y, result: divine.result };
+      isDivine = true;
+    } else {
+      resolved = { pass: true };
+    }
+  } else {
+    resolved = resolveBestMove(voteCounts, board, color, prevBoardArr);
+  }
 
   let newBoard = board;
   let captured = 0;
@@ -83,11 +98,11 @@ function processTurn(game) {
       ? `;B[${toSGFCoord(x, y)}]`
       : `;W[${toSGFCoord(x, y)}]`;
 
-    // 착수 기록
+    // 착수 기록 (신의 한수는 vote_count = -1 표시)
     db.prepare(`
       INSERT INTO moves (game_id, move_number, x, y, color, vote_count)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(game.id, game.move_number, x, y, game.current_turn, voteCounts[0]?.count || 0);
+    `).run(game.id, game.move_number, x, y, game.current_turn, isDivine ? -1 : (voteCounts[0]?.count || 0));
   }
 
   // 연속 패스 2회 → 게임 종료
@@ -107,7 +122,7 @@ function processTurn(game) {
 
   if (bothPassed) {
     finishGame(game, newBoard, newSGF, newPrisoners);
-    return { resolved, captured, newBoard, newMoveNo, finished: true };
+    return { resolved, captured, newBoard, newMoveNo, finished: true, isDivine };
   } else {
     db.prepare(`
       UPDATE games SET
@@ -133,7 +148,7 @@ function processTurn(game) {
     );
   }
 
-  return { resolved, captured, newBoard, newMoveNo, finished: false };
+  return { resolved, captured, newBoard, newMoveNo, finished: false, isDivine };
 }
 
 // onFinish 콜백: 종료 이벤트를 index.js로 전달

@@ -182,6 +182,13 @@ function connectWS() {
 
       if (msg.type === 'standings') renderStandings(msg.standings);
 
+      if (msg.type === 'divine_move') {
+        const info = COUNTRY_INFO[msg.countryCode] || {};
+        const labels = 'ABCDEFGHJKLMNOPQRST';
+        const coord = msg.x !== null ? `${labels[msg.x]}${SIZE - msg.y}` : 'PASS';
+        showDivineToast(`⚡ 신의 한수! ${info.flag} ${info.name} → ${coord}`);
+      }
+
       if (msg.type === 'game_finished') {
         // 내가 참가 중인 게임인지 확인
         const myCode = state.myCountry;
@@ -615,6 +622,35 @@ function downloadSGF(gameId) {
   a.href = `/api/games/${gameId}/sgf`;
   a.download = `game_${gameId}.sgf`;
   a.click();
+}
+
+// ── 신의 한수 토스트 (특별 스타일) ───────────────────────────────────────
+let divineTimer;
+function showDivineToast(msg) {
+  let el = document.getElementById('divine-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'divine-toast';
+    el.style.cssText = `
+      position:fixed; top:80px; left:50%; transform:translateX(-50%) scale(0.8);
+      background:linear-gradient(135deg,#1a0a3d,#3d1a6b);
+      border:2px solid #a855f7; color:#e9d5ff;
+      padding:14px 28px; border-radius:30px; font-size:1.1rem; font-weight:bold;
+      opacity:0; pointer-events:none; z-index:9990;
+      transition:opacity .3s, transform .3s;
+      box-shadow:0 0 30px rgba(168,85,247,0.5);
+      white-space:nowrap;
+    `;
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  el.style.transform = 'translateX(-50%) scale(1)';
+  clearTimeout(divineTimer);
+  divineTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) scale(0.8)';
+  }, 4000);
 }
 
 // ── 토스트 ────────────────────────────────────────────────────────────────

@@ -179,6 +179,28 @@ function scoreBoard(board) {
   return { blackScore, whiteScore };
 }
 
+// 신의 한수: 투표 없을 때 랜덤 유효 착수 반환
+// returns: { x, y, result } or null (전 판 꽉 찼거나 유효 수 없음)
+function getDivineMove(board, color, prevBoardArr) {
+  // 빈 칸 목록 수집 후 셔플 (Fisher-Yates)
+  const empties = [];
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    if (board[i] === 0) empties.push(i);
+  }
+  for (let i = empties.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [empties[i], empties[j]] = [empties[j], empties[i]];
+  }
+
+  for (const i of empties) {
+    const x = i % SIZE;
+    const y = Math.floor(i / SIZE);
+    const result = placeStone(board, x, y, color, prevBoardArr);
+    if (result.ok) return { x, y, result };
+  }
+  return null; // 유효 수 없음 → 강제 패스
+}
+
 // SGF 좌표 변환
 function toSGFCoord(x, y) {
   const letters = 'abcdefghijklmnopqrs';
@@ -190,6 +212,7 @@ module.exports = {
   emptyBoard,
   placeStone,
   resolveBestMove,
+  getDivineMove,
   scoreBoard,
   toSGFCoord,
 };

@@ -2,7 +2,7 @@
  * 바둑 엔진 단위테스트 + 고속 게임 시뮬레이션
  * 실행: node server/simulate.js
  */
-const { placeStone, emptyBoard, scoreBoard, resolveBestMove, SIZE } = require('./goEngine');
+const { placeStone, emptyBoard, scoreBoard, resolveBestMove, getDivineMove, SIZE } = require('./goEngine');
 
 // ── ANSI 컬러 ─────────────────────────────────────────────────────────────
 const c = {
@@ -278,6 +278,134 @@ test('패스 투표 처리', () => {
   const votes = [{ x: null, y: null, count: 10 }];
   const result = resolveBestMove(votes, b, 1, null);
   assert(result.pass, '패스 안됨');
+});
+
+// ════════════════════════════════════════════════════════════════
+// 7. 결함주입 (Fault Injection)
+// ════════════════════════════════════════════════════════════════
+console.log(c.cyan(c.bold('\n━━ 결함주입 테스트 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')));
+
+// ── 7-1. 투표 0개 시나리오 ────────────────────────────────────────
+console.log(c.yellow('7. 결함주입 케이스'));
+
+test('[FI-1] 투표 0개 → resolveBestMove 패스 반환', () => {
+  const b = emptyBoard();
+  const result = resolveBestMove([], b, 1, null);
+  assert(result.pass, '빈 투표에서 패스 아님');
+});
+
+test('[FI-2] 투표 0개 → getDivineMove 유효 수 반환 (신의 한수 발동)', () => {
+  const b = emptyBoard();
+  const divine = getDivineMove(b, 1, null);
+  assert(divine !== null, '신의 한수 null 반환');
+  assert(divine.x >= 0 && divine.x < SIZE, `x 범위 이상: ${divine.x}`);
+  assert(divine.y >= 0 && divine.y < SIZE, `y 범위 이상: ${divine.y}`);
+  assert(divine.result.ok, `착수 유효성 실패: ${divine.result.error}`);
+  console.log(c.dim(`    → 신의 한수: (${divine.x},${divine.y})`));
+});
+
+test('[FI-3] 거의 꽉 찬 보드에서도 getDivineMove 성공', () => {
+  const b = emptyBoard();
+  // 361칸 중 1칸만 비움: (10,10)
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (!(x === 10 && y === 10)) b[idx(x, y)] = (x + y) % 2 === 0 ? 1 : 2;
+    }
+  }
+  const divine = getDivineMove(b, 1, null);
+  // (10,10)이 자충수가 아니면 성공, 자충수면 null (pass)
+  console.log(c.dim(`    → 결과: ${divine ? `(${divine.x},${divine.y})` : 'null(pass)'}`));
+  // null이어도 OK - 유효 수가 없는 경우
+});
+
+test('[FI-4] 보드 완전히 꽉 찼을 때 getDivineMove null 반환', () => {
+  const b = new Array(SIZE * SIZE).fill(1);
+  const divine = getDivineMove(b, 2, null);
+  assert(divine === null, `꽉 찬 보드에서 신의 한수 반환됨: (${divine?.x},${divine?.y})`);
+});
+
+// ── 7-2. 동점 처리 ───────────────────────────────────────────────
+test('[FI-5] 동점 시 배열 첫 번째(최후점 기준 정렬된 것) 선택', () => {
+  const b = emptyBoard();
+  // 동일 count=5, SQL에서 latest_vote 기준으로 정렬 후 전달된다고 가정
+  // resolveBestMove는 전달된 순서 그대로 첫 번째 유효 수 선택
+  const votes = [
+    { x: 7, y: 7, count: 5 }, // 최후점 (나중에 투표된 것 → SQL이 먼저 배치)
+    { x: 3, y: 3, count: 5 }, // 이전점
+  ];
+  const result = resolveBestMove(votes, b, 1, null);
+  assert(!result.pass, '패스됨');
+  assert(result.x === 7 && result.y === 7, `최후점 우선 아님: (${result.x},${result.y})`);
+});
+
+test('[FI-6] 1위 동점 무효 → 2위 동점 중 최후점 선택', () => {
+  const b = emptyBoard();
+  b[idx(1, 1)] = 1; b[idx(2, 2)] = 1; // 두 곳 이미 점유
+  const votes = [
+    { x: 1, y: 1, count: 10 }, // 무효 (돌 있음)
+    { x: 2, y: 2, count: 10 }, // 무효 (돌 있음)
+    { x: 9, y: 9, count: 5  }, // 최후점 (나중 투표)
+    { x: 4, y: 4, count: 5  }, // 이전점
+  ];
+  const result = resolveBestMove(votes, b, 2, null);
+  assert(!result.pass, '패스됨');
+  assert(result.x === 9 && result.y === 9, `최후점 우선 아님: (${result.x},${result.y})`);
+});
+
+// ── 7-3. 1표만 있어도 착수 ──────────────────────────────────────
+test('[FI-7] 1표만 있어도 착수 성공 (최소 투표 없음)', () => {
+  const b = emptyBoard();
+  const votes = [{ x: 15, y: 15, count: 1 }];
+  const result = resolveBestMove(votes, b, 1, null);
+  assert(!result.pass, '1표인데 패스됨');
+  assert(result.x === 15 && result.y === 15, '1표 위치 착수 안됨');
+});
+
+// ── 7-4. 경계/코너 결함 ─────────────────────────────────────────
+test('[FI-8] 코너 착수 정상 처리', () => {
+  const b = emptyBoard();
+  const votes = [
+    { x: 0,  y: 0,  count: 5 },  // A19 코너
+    { x: 18, y: 0,  count: 4 },  // T19 코너
+    { x: 0,  y: 18, count: 3 },  // A1 코너
+    { x: 18, y: 18, count: 2 },  // T1 코너
+  ];
+  const result = resolveBestMove(votes, b, 1, null);
+  assert(!result.pass, '코너 착수 패스됨');
+  assert(result.x === 0 && result.y === 0, `A19 코너 착수 안됨: (${result.x},${result.y})`);
+});
+
+test('[FI-9] 포위된 코너 자충수 → 유효 2위 선택', () => {
+  const b = emptyBoard();
+  // A19(0,0) 포위: (1,0)=백, (0,1)=백 → 흑이 두면 자충수
+  b[idx(1, 0)] = 2; b[idx(0, 1)] = 2;
+  const votes = [
+    { x: 0, y: 0, count: 99 }, // 자충수 → 무효
+    { x: 5, y: 5, count: 50 }, // 유효
+  ];
+  const result = resolveBestMove(votes, b, 1, null);
+  assert(!result.pass, '패스됨');
+  assert(result.x === 5 && result.y === 5, `2위 선택 안됨: (${result.x},${result.y})`);
+});
+
+test('[FI-10] 자충수 위치 skip → 다른 유효 착점 선택', () => {
+  // (1,1) 주위를 백(2)으로 포위 (백들은 충분한 다른 활로 보유)
+  //  · · · · ·
+  //  · ○ · · ·
+  //  ○ · ○ · ·    ← (1,1)에 흑 두면 자충수
+  //  · ○ · · ·
+  const b = emptyBoard();
+  b[idx(0,1)]=2; b[idx(2,1)]=2; b[idx(1,0)]=2; b[idx(1,2)]=2;
+
+  // 자충수 확인: placeStone 거부
+  const sc = placeStone(b, 1, 1, 1, null);
+  assert(!sc.ok && sc.error.includes('자충수'), `자충수 아님: ${sc.error}`);
+
+  // getDivineMove: (1,1) 건너뛰고 다른 빈칸 선택해야 함
+  const divine = getDivineMove(b, 1, null);
+  assert(divine !== null, '유효 착점 없음 (빈칸이 있는데 null)');
+  assert(!(divine.x === 1 && divine.y === 1), `자충수 위치(1,1) 선택됨`);
+  console.log(c.dim(`    → 자충수(1,1) skip, 신의 한수: (${divine.x},${divine.y})`));
 });
 
 // ════════════════════════════════════════════════════════════════

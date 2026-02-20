@@ -76,6 +76,20 @@ cron.schedule('*/10 * * * *', () => {
   processDueTurns((gameId, result) => {
     const state = getGameState(gameId);
     if (state) broadcast(gameId, { state });
+
+    // 신의 한수 이벤트
+    if (result.isDivine && !result.resolved.pass) {
+      const g = db.prepare(`SELECT * FROM games WHERE id = ?`).get(gameId);
+      const country = result.resolved.color === 'black' ? g?.black_code : g?.white_code;
+      broadcast(gameId, {
+        type: 'divine_move',
+        gameId,
+        x: result.resolved.x,
+        y: result.resolved.y,
+        countryCode: country,
+      });
+      console.log(`[신의 한수] game#${gameId} ${country} (${result.resolved.x},${result.resolved.y})`);
+    }
   });
   broadcastAll({ type: 'standings', standings: getStandings() });
 });
