@@ -271,7 +271,7 @@ const LANGS = {
     next_move: '다음 착수', current_turn: '현재 차례',
     click_to_vote: '클릭하여 투표', can_vote: '투표 가능!', opponent_turn: '상대 팀 차례입니다',
     h2h_title: '상대전적', status_title: '현황',
-    prisoners: n => `포로 ${n}개`, total_moves: '총 수',
+    prisoners: n => `잡은 돌 ${n}개`, total_moves: '총 수',
     votes_title: n => `투표 현황 (${n}곳)`, no_votes: '아직 투표 없음',
     btn_pass: '패스 투표', my_vote: c => `내 투표: ${c}`,
     elo_rating: 'ELO 레이팅',

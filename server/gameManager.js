@@ -17,33 +17,55 @@ function nextMoveAt() {
   return d.toISOString();
 }
 
-// 리그 매칭 쌍 (한중일미 라운드로빈 6경기)
+// 리그 매칭 쌍 (한중일미 라운드로빈 6경기) - 흑/백은 직전 결과로 동적 결정
 const LEAGUE_PAIRS = [
-  { black: 'KR', white: 'JP' },
-  { black: 'CN', white: 'KR' },
-  { black: 'JP', white: 'CN' },
-  { black: 'US', white: 'KR' },
-  { black: 'CN', white: 'US' },
-  { black: 'JP', white: 'US' },
+  ['KR', 'JP'],
+  ['CN', 'KR'],
+  ['JP', 'CN'],
+  ['US', 'KR'],
+  ['CN', 'US'],
+  ['JP', 'US'],
 ];
 
 // 활성 게임이 없는 쌍에 새 게임 생성
+// 직전 승자 → 백(유리), 직전 패자 → 흑(선수) / 첫 경기 or 무승부 시 기본 배정
 function initLeagueGames() {
   const activeGames = db.prepare(`SELECT black_code, white_code FROM games WHERE status = 'active'`).all();
-  const activePairs = new Set(activeGames.map(g => `${g.black_code}-${g.white_code}`));
+  // 방향 무관 정렬 키로 활성 쌍 관리
+  const activePairs = new Set(
+    activeGames.map(g => [g.black_code, g.white_code].sort().join('-'))
+  );
 
   const insertGame = db.prepare(`
     INSERT INTO games (black_code, white_code, board_state, prev_board_state, next_move_at, current_turn, sgf)
     VALUES (?, ?, ?, NULL, ?, 'black', '')
   `);
 
-  for (const { black, white } of LEAGUE_PAIRS) {
-    const key = `${black}-${white}`;
-    if (!activePairs.has(key)) {
-      const board = JSON.stringify(emptyBoard());
-      insertGame.run(black, white, board, nextMoveAt());
-      console.log(`[Game] 새 게임 생성: ${black} vs ${white}`);
+  for (const [codeA, codeB] of LEAGUE_PAIRS) {
+    const pairKey = [codeA, codeB].sort().join('-');
+    if (activePairs.has(pairKey)) continue;
+
+    // 직전 완료 경기 조회
+    const lastGame = db.prepare(`
+      SELECT black_code, white_code, winner_code FROM games
+      WHERE status = 'finished'
+        AND ((black_code = ? AND white_code = ?) OR (black_code = ? AND white_code = ?))
+      ORDER BY ended_at DESC LIMIT 1
+    `).get(codeA, codeB, codeB, codeA);
+
+    let newBlack, newWhite;
+    if (lastGame?.winner_code) {
+      // 직전 승자 → 백, 패자 → 흑 (선수)
+      newWhite = lastGame.winner_code;
+      newBlack = [codeA, codeB].find(c => c !== lastGame.winner_code);
+    } else {
+      // 첫 경기 or 무승부: 알파벳 순 앞 → 흑
+      [newBlack, newWhite] = [codeA, codeB].sort();
     }
+
+    const board = JSON.stringify(emptyBoard());
+    insertGame.run(newBlack, newWhite, board, nextMoveAt());
+    console.log(`[Game] 새 게임: ${newBlack}(흑) vs ${newWhite}(백)${lastGame?.winner_code ? ` ← 직전 승자 ${lastGame.winner_code}→백` : ' [첫경기]'}`);
   }
 }
 
