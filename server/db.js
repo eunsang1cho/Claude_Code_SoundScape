@@ -72,6 +72,19 @@ db.exec(`
   );
 `);
 
+// page_visits 테이블 마이그레이션
+db.exec(`
+  CREATE TABLE IF NOT EXISTS page_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
+    country_code TEXT,
+    visited_at TEXT NOT NULL DEFAULT (datetime('now')),
+    date TEXT NOT NULL DEFAULT (date('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_page_visits_date ON page_visits(date);
+  CREATE INDEX IF NOT EXISTS idx_page_visits_ip_date ON page_visits(ip, date);
+`);
+
 // prev_board_state 컬럼 마이그레이션 (기존 DB 호환)
 try {
   db.exec(`ALTER TABLE games ADD COLUMN prev_board_state TEXT`);

@@ -24,6 +24,20 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(countryMiddleware);
 
+// ── 방문자 트래킹 (HTML 페이지 요청 시) ───────────────────────────────────
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.accepts('html') && !req.path.startsWith('/api')) {
+    const ip = req.clientIP || req.socket.remoteAddress;
+    const country = req.countryCode || null;
+    try {
+      db.prepare(`
+        INSERT INTO page_visits (ip, country_code) VALUES (?, ?)
+      `).run(ip, country);
+    } catch {}
+  }
+  next();
+});
+
 // ── WebSocket ─────────────────────────────────────────────────────────────
 const clients = new Map(); // ws → { gameId, countryCode }
 
@@ -223,6 +237,47 @@ app.get('/api/games/:id/sgf', (req, res) => {
   res.setHeader('Content-Type', 'application/x-go-sgf');
   res.setHeader('Content-Disposition', `attachment; filename="game_${game.id}.sgf"`);
   res.send(sgf);
+});
+
+// ── 관리자 통계 (토큰 인증) ────────────────────────────────────────────────
+app.get('/api/admin/stats', (req, res) => {
+  const token = req.query.token || req.headers['x-admin-token'];
+  const adminToken = process.env.ADMIN_TOKEN;
+
+  if (!adminToken || token !== adminToken) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  // 오늘 방문자
+  const today = db.prepare(`
+    SELECT COUNT(*) as total, COUNT(DISTINCT ip) as unique_visitors
+    FROM page_visits WHERE date = date('now')
+  `).get();
+
+  // 최근 7일 일별 방문자
+  const last7days = db.prepare(`
+    SELECT date, COUNT(*) as total, COUNT(DISTINCT ip) as unique_visitors
+    FROM page_visits
+    WHERE date >= date('now', '-6 days')
+    GROUP BY date
+    ORDER BY date DESC
+  `).all();
+
+  // 국가별 방문자 (전체)
+  const byCountry = db.prepare(`
+    SELECT country_code, COUNT(DISTINCT ip) as unique_visitors
+    FROM page_visits
+    GROUP BY country_code
+    ORDER BY unique_visitors DESC
+  `).all();
+
+  // 전체 누적
+  const total = db.prepare(`
+    SELECT COUNT(*) as total, COUNT(DISTINCT ip) as unique_visitors
+    FROM page_visits
+  `).get();
+
+  res.json({ today, last7days, byCountry, total });
 });
 
 // SPA fallback

@@ -68,17 +68,6 @@ nav { display: flex; gap: 8px; flex: 1; }
 }
 #my-country span { color: var(--gold); font-weight: bold; }
 
-/* ── Ad Banner ────────────────────────────────── */
-.ad-banner {
-  background: var(--bg2);
-  border: 1px dashed #333;
-  text-align: center;
-  padding: 8px;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* ── Main ─────────────────────────────────────── */
 main {
