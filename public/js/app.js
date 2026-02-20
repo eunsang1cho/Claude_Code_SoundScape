@@ -253,18 +253,18 @@ async function fetchGames() {
 
 // ── 국가 메타 (flag/colors는 언어 무관) ───────────────────────────────────
 const COUNTRY_META = {
-  KR: { flag: '🇰🇷', colors: ['#C60C30', '#003478', '#ffffff'] },
-  CN: { flag: '🇨🇳', colors: ['#DE2910', '#FFDE00', '#FF6B6B'] },
-  JP: { flag: '🇯🇵', colors: ['#BC002D', '#ffffff', '#FF6B9D'] },
-  US: { flag: '🇺🇸', colors: ['#B22234', '#3C3B6E', '#ffffff'] },
+  KR:    { flag: '🇰🇷', colors: ['#C60C30', '#003478', '#ffffff'] },
+  CN:    { flag: '🇨🇳', colors: ['#DE2910', '#FFDE00', '#FF6B6B'] },
+  JP:    { flag: '🇯🇵', colors: ['#BC002D', '#ffffff', '#FF6B9D'] },
+  WORLD: { flag: '🌍', colors: ['#1a6b3c', '#1565c0', '#f5a623'] },
 };
 
 // ── 다국어 ─────────────────────────────────────────────────────────────────
 const LANGS = {
   KR: {
-    html_lang: 'ko', title: '국가대항전 바둑 🌏', footer: '국가대항전 바둑 · 10분마다 착수 · 한중일 리그전',
+    html_lang: 'ko', title: '국가대항전 바둑 🌏', footer: '국가대항전 바둑 · 10분마다 착수 · 한중일+월드 리그전',
     nav_games: '대국 현황', nav_standings: '순위표', nav_history: '기보 히스토리',
-    my_team: '내 팀', vote_only: '(한/중/일 IP만 투표 가능)',
+    my_team: '내 팀', vote_only: '(개발 모드: ?country=KR)',
     black: '흑', white: '백',
     move_no: n => `제${n}수`,
     divine_waiting: '⚡ 신의 한수 대기 중',
@@ -289,14 +289,14 @@ const LANGS = {
     result_win: '승리!', result_win_sub: (f, n) => `${f} ${n}의 승리!`,
     result_lose: '패배', result_lose_sub: (f, n) => `${f} ${n} 패배...`,
     result_draw: '무승부', result_draw_sub: '무승부',
-    result_close: '계속 보기', ad_area: '광고 영역',
+    result_close: '계속 보기', ad_area: '',
     locale: 'ko-KR',
-    names: { KR: '한국', CN: '중국', JP: '일본', US: '미국' },
+    names: { KR: '한국', CN: '중국', JP: '일본', WORLD: '월드' },
   },
   CN: {
-    html_lang: 'zh', title: '国家对抗围棋 🌏', footer: '国家对抗围棋 · 每10分钟落子 · 中韩日联赛',
+    html_lang: 'zh', title: '国家对抗围棋 🌏', footer: '国家对抗围棋 · 每10分钟落子 · 中韩日+世界联赛',
     nav_games: '对局状况', nav_standings: '排行榜', nav_history: '棋谱历史',
-    my_team: '我的队伍', vote_only: '(仅限中/韩/日 IP投票)',
+    my_team: '我的队伍', vote_only: '(开发模式: ?country=CN)',
     black: '黑', white: '白',
     move_no: n => `第${n}手`,
     divine_waiting: '⚡ 等待神之一手',
@@ -321,14 +321,14 @@ const LANGS = {
     result_win: '胜利！', result_win_sub: (f, n) => `${f} ${n} 获胜！`,
     result_lose: '失败', result_lose_sub: (f, n) => `${f} ${n} 败北...`,
     result_draw: '平局', result_draw_sub: '平局',
-    result_close: '继续观看', ad_area: '广告区域',
+    result_close: '继续观看', ad_area: '',
     locale: 'zh-CN',
-    names: { KR: '韩国', CN: '中国', JP: '日本', US: '美国' },
+    names: { KR: '韩国', CN: '中国', JP: '日本', WORLD: '世界' },
   },
   JP: {
-    html_lang: 'ja', title: '国別対抗囲碁 🌏', footer: '国別対抗囲碁 · 10分毎に着手 · 韓中日リーグ戦',
+    html_lang: 'ja', title: '国別対抗囲碁 🌏', footer: '国別対抗囲碁 · 10分毎に着手 · 韓中日+ワールドリーグ',
     nav_games: '対局状況', nav_standings: 'ランキング', nav_history: '棋譜履歴',
-    my_team: 'マイチーム', vote_only: '(日/韓/中 IPのみ投票可)',
+    my_team: 'マイチーム', vote_only: '(開発モード: ?country=JP)',
     black: '黒', white: '白',
     move_no: n => `第${n}手`,
     divine_waiting: '⚡ 神の一手を待っています',
@@ -353,14 +353,14 @@ const LANGS = {
     result_win: '勝利！', result_win_sub: (f, n) => `${f} ${n} 勝利！`,
     result_lose: '敗北', result_lose_sub: (f, n) => `${f} ${n} 敗北...`,
     result_draw: '引き分け', result_draw_sub: '引き分け',
-    result_close: '引き続き観戦', ad_area: '広告エリア',
+    result_close: '引き続き観戦', ad_area: '',
     locale: 'ja-JP',
-    names: { KR: '韓国', CN: '中国', JP: '日本', US: '米国' },
+    names: { KR: '韓国', CN: '中国', JP: '日本', WORLD: 'ワールド' },
   },
   EN: {
-    html_lang: 'en', title: 'Nations Go Championship 🌏', footer: 'Nations Go · Move every 10 min · KR/CN/JP/US League',
+    html_lang: 'en', title: 'Nations Go Championship 🌏', footer: 'Nations Go · Move every 10 min · KR/CN/JP/World League',
     nav_games: 'Games', nav_standings: 'Rankings', nav_history: 'Game History',
-    my_team: 'My Team', vote_only: '(Voting: KR/CN/JP IPs only)',
+    my_team: 'My Team', vote_only: '(Dev mode: ?country=KR)',
     black: 'Black', white: 'White',
     move_no: n => `Move ${n}`,
     divine_waiting: '⚡ Divine Move Waiting',
@@ -385,9 +385,9 @@ const LANGS = {
     result_win: 'VICTORY!', result_win_sub: (f, n) => `${f} ${n} Wins!`,
     result_lose: 'DEFEAT', result_lose_sub: (f, n) => `${f} ${n} Loses...`,
     result_draw: 'DRAW', result_draw_sub: 'Draw',
-    result_close: 'Keep watching', ad_area: 'Advertisement',
+    result_close: 'Keep watching', ad_area: '',
     locale: 'en-US',
-    names: { KR: 'Korea', CN: 'China', JP: 'Japan', US: 'USA' },
+    names: { KR: 'Korea', CN: 'China', JP: 'Japan', WORLD: 'World' },
   },
 };
 

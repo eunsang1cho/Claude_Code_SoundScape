@@ -134,7 +134,7 @@ app.post('/api/games/:id/vote', async (req, res) => {
   const countryCode = req.countryCode;
 
   if (!countryCode) {
-    return res.status(403).json({ error: '한국, 중국, 일본 IP만 투표 가능합니다.' });
+    return res.status(403).json({ error: '투표하려면 ?country=KR 등 개발 파라미터를 사용하세요.' });
   }
 
   const game = db.prepare(`SELECT * FROM games WHERE id = ? AND status = 'active'`).get(gameId);

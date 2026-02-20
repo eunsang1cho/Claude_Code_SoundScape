@@ -95,17 +95,28 @@ try {
   db.exec(`ALTER TABLE games ADD COLUMN divine_mode INTEGER NOT NULL DEFAULT 0`);
 } catch {}
 
-// 초기 국가 데이터 (한중일 + 미국)
+// 기존 US 데이터 → WORLD 마이그레이션
+try {
+  db.exec(`UPDATE countries SET code = 'WORLD', name = 'World', flag = '🌍' WHERE code = 'US'`);
+  db.exec(`UPDATE games SET black_code = 'WORLD' WHERE black_code = 'US'`);
+  db.exec(`UPDATE games SET white_code = 'WORLD' WHERE white_code = 'US'`);
+  db.exec(`UPDATE games SET winner_code = 'WORLD' WHERE winner_code = 'US'`);
+  db.exec(`UPDATE votes SET country_code = 'WORLD' WHERE country_code = 'US'`);
+  db.exec(`UPDATE head_to_head SET country_a = 'WORLD' WHERE country_a = 'US'`);
+  db.exec(`UPDATE head_to_head SET country_b = 'WORLD' WHERE country_b = 'US'`);
+} catch {}
+
+// 초기 국가 데이터 (한중일 + 월드)
 const initCountries = db.prepare(`
   INSERT OR IGNORE INTO countries (code, name, flag, elo) VALUES (?, ?, ?, 1500)
 `);
 initCountries.run('KR', '한국', '🇰🇷');
 initCountries.run('CN', '중국', '🇨🇳');
 initCountries.run('JP', '일본', '🇯🇵');
-initCountries.run('US', '미국', '🇺🇸');
+initCountries.run('WORLD', 'World', '🌍');
 
-// 상대전적 초기화 (4개국 6쌍 - 정렬된 키 사용)
-const allCodes = ['CN', 'JP', 'KR', 'US'];
+// 상대전적 초기화 (4팀 6쌍 - 정렬된 키 사용)
+const allCodes = ['CN', 'JP', 'KR', 'WORLD'];
 const initH2H = db.prepare(`
   INSERT OR IGNORE INTO head_to_head (country_a, country_b) VALUES (?, ?)
 `);

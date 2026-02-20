@@ -1,7 +1,8 @@
 const axios = require('axios');
 
-// 지원 국가 (한중일)
-const SUPPORTED = new Set(['KR', 'CN', 'JP', 'US']);
+// 팀 코드 (한중일 + 월드)
+const SUPPORTED = new Set(['KR', 'CN', 'JP', 'WORLD']);
+const EAST_ASIA  = new Set(['KR', 'CN', 'JP']);
 
 // 개발/테스트용 오버라이드 (쿼리스트링 ?country=KR)
 function getCountryFromQuery(req) {
@@ -12,9 +13,9 @@ function getCountryFromQuery(req) {
 
 // IP에서 국가 코드 추출
 async function getCountryByIP(ip) {
-  // 로컬/개발 환경
+  // 로컬/개발 환경 → 쿼리 오버라이드 필요
   if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
-    return null; // 로컬은 쿼리 오버라이드 필요
+    return null;
   }
 
   try {
@@ -22,9 +23,10 @@ async function getCountryByIP(ip) {
       timeout: 3000
     });
     const code = res.data?.countryCode;
-    return SUPPORTED.has(code) ? code : null;
+    // 한중일 → 해당 팀, 나머지 전 세계 → WORLD
+    return EAST_ASIA.has(code) ? code : 'WORLD';
   } catch {
-    return null;
+    return 'WORLD'; // API 실패 시 WORLD로 처리
   }
 }
 

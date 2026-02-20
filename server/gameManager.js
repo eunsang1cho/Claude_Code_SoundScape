@@ -17,14 +17,14 @@ function nextMoveAt() {
   return d.toISOString();
 }
 
-// 리그 매칭 쌍 (한중일미 라운드로빈 6경기) - 흑/백은 직전 결과로 동적 결정
+// 리그 매칭 쌍 (한중일 + 월드 라운드로빈 6경기) - 흑/백은 직전 결과로 동적 결정
 const LEAGUE_PAIRS = [
   ['KR', 'JP'],
   ['CN', 'KR'],
   ['JP', 'CN'],
-  ['US', 'KR'],
-  ['CN', 'US'],
-  ['JP', 'US'],
+  ['WORLD', 'KR'],
+  ['CN', 'WORLD'],
+  ['JP', 'WORLD'],
 ];
 
 // 활성 게임이 없는 쌍에 새 게임 생성
