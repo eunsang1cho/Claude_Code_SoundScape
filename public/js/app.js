@@ -190,8 +190,8 @@ function connectWS() {
       // 신의 한수 즉시 착수 완료
       if (msg.type === 'divine_move_executed') {
         setDivineModeActive(msg.gameId, null, false);
-        const info = COUNTRY_INFO[msg.votingCountry] || {};
-        showDivineToast(`⚡ 신의 한수! ${info.flag} ${info.name} → ${msg.coord}`);
+        const info = getCountryInfo(msg.votingCountry);
+        showDivineToast(T('divine_toast', info.flag, info.name, msg.coord));
       }
 
       if (msg.type === 'game_finished') {
@@ -232,11 +232,13 @@ async function api(path, opts = {}) {
 async function fetchMyCountry() {
   const data = await api('/api/me');
   state.myCountry = data.countryCode;
+  applyLang(); // 언어 적용
   const el = document.getElementById('my-country');
+  const info = getCountryInfo(state.myCountry);
   if (state.myCountry) {
-    el.innerHTML = `내 팀: <span>${COUNTRY_INFO[state.myCountry]?.flag || ''} ${COUNTRY_INFO[state.myCountry]?.name || state.myCountry}</span>`;
+    el.innerHTML = `${T('my_team')}: <span>${info.flag} ${info.name}</span>`;
   } else {
-    el.textContent = '(한/중/일 IP만 투표 가능)';
+    el.textContent = T('vote_only');
   }
 }
 
@@ -249,13 +251,190 @@ async function fetchGames() {
   }
 }
 
-// ── 국가 정보 ─────────────────────────────────────────────────────────────
-const COUNTRY_INFO = {
-  KR: { name: '한국', flag: '🇰🇷', colors: ['#C60C30', '#003478', '#ffffff'] },
-  CN: { name: '중국', flag: '🇨🇳', colors: ['#DE2910', '#FFDE00', '#FF6B6B'] },
-  JP: { name: '일본', flag: '🇯🇵', colors: ['#BC002D', '#ffffff', '#FF6B9D'] },
-  US: { name: '미국', flag: '🇺🇸', colors: ['#B22234', '#3C3B6E', '#ffffff'] },
+// ── 국가 메타 (flag/colors는 언어 무관) ───────────────────────────────────
+const COUNTRY_META = {
+  KR: { flag: '🇰🇷', colors: ['#C60C30', '#003478', '#ffffff'] },
+  CN: { flag: '🇨🇳', colors: ['#DE2910', '#FFDE00', '#FF6B6B'] },
+  JP: { flag: '🇯🇵', colors: ['#BC002D', '#ffffff', '#FF6B9D'] },
+  US: { flag: '🇺🇸', colors: ['#B22234', '#3C3B6E', '#ffffff'] },
 };
+
+// ── 다국어 ─────────────────────────────────────────────────────────────────
+const LANGS = {
+  KR: {
+    html_lang: 'ko', title: '국가대항전 바둑 🌏', footer: '국가대항전 바둑 · 10분마다 착수 · 한중일 리그전',
+    nav_games: '대국 현황', nav_standings: '순위표', nav_history: '기보 히스토리',
+    my_team: '내 팀', vote_only: '(한/중/일 IP만 투표 가능)',
+    black: '흑', white: '백',
+    move_no: n => `제${n}수`,
+    divine_waiting: '⚡ 신의 한수 대기 중',
+    next_move: '다음 착수', current_turn: '현재 차례',
+    click_to_vote: '클릭하여 투표', can_vote: '투표 가능!', opponent_turn: '상대 팀 차례입니다',
+    h2h_title: '상대전적', status_title: '현황',
+    prisoners: n => `포로 ${n}개`, total_moves: '총 수',
+    votes_title: n => `투표 현황 (${n}곳)`, no_votes: '아직 투표 없음',
+    btn_pass: '패스 투표', my_vote: c => `내 투표: ${c}`,
+    elo_rating: 'ELO 레이팅',
+    vote_done: c => `투표 완료: ${c}`, vote_fail: '투표 실패',
+    opponent_turn_toast: '현재 상대 팀 차례입니다.',
+    divine_toast: (f, n, c) => `⚡ 신의 한수! ${f} ${n} → ${c}`,
+    standings_title: '🏆 ELO 순위표', rank: '순위', country: '국가',
+    h2h_section: '⚔️ 상대전적',
+    h2h_col_a: '국가 A', h2h_record: '전적 (승-무-패)', h2h_col_b: '국가 B',
+    history_title: '📜 기보 히스토리',
+    loading: '불러오는 중...', no_history: '아직 완료된 대국이 없습니다.',
+    history_winner: n => `🏆 ${n} 승`, history_draw: '무승부',
+    history_moves: n => `${n}수`,
+    score_line: (bf, bs, wf, ws) => `${bf}흑 ${bs}집  vs  ${wf}백 ${ws}집`,
+    result_win: '승리!', result_win_sub: (f, n) => `${f} ${n}의 승리!`,
+    result_lose: '패배', result_lose_sub: (f, n) => `${f} ${n} 패배...`,
+    result_draw: '무승부', result_draw_sub: '무승부',
+    result_close: '계속 보기', ad_area: '광고 영역',
+    locale: 'ko-KR',
+    names: { KR: '한국', CN: '중국', JP: '일본', US: '미국' },
+  },
+  CN: {
+    html_lang: 'zh', title: '国家对抗围棋 🌏', footer: '国家对抗围棋 · 每10分钟落子 · 中韩日联赛',
+    nav_games: '对局状况', nav_standings: '排行榜', nav_history: '棋谱历史',
+    my_team: '我的队伍', vote_only: '(仅限中/韩/日 IP投票)',
+    black: '黑', white: '白',
+    move_no: n => `第${n}手`,
+    divine_waiting: '⚡ 等待神之一手',
+    next_move: '下一手', current_turn: '当前回合',
+    click_to_vote: '点击投票', can_vote: '可以投票！', opponent_turn: '对方回合',
+    h2h_title: '对战成绩', status_title: '现状',
+    prisoners: n => `提子 ${n}个`, total_moves: '总手数',
+    votes_title: n => `投票状况 (${n}处)`, no_votes: '暂无投票',
+    btn_pass: '投虚手', my_vote: c => `我的投票: ${c}`,
+    elo_rating: 'ELO 评分',
+    vote_done: c => `投票完成: ${c}`, vote_fail: '投票失败',
+    opponent_turn_toast: '现在是对方回合。',
+    divine_toast: (f, n, c) => `⚡ 神之一手！${f} ${n} → ${c}`,
+    standings_title: '🏆 ELO 排行榜', rank: '名次', country: '国家',
+    h2h_section: '⚔️ 对战成绩',
+    h2h_col_a: '国家 A', h2h_record: '对战成绩 (胜-平-负)', h2h_col_b: '国家 B',
+    history_title: '📜 棋谱历史',
+    loading: '加载中...', no_history: '暂无已完成的对局。',
+    history_winner: n => `🏆 ${n} 胜`, history_draw: '平局',
+    history_moves: n => `${n}手`,
+    score_line: (bf, bs, wf, ws) => `${bf}黑 ${bs}目  vs  ${wf}白 ${ws}目`,
+    result_win: '胜利！', result_win_sub: (f, n) => `${f} ${n} 获胜！`,
+    result_lose: '失败', result_lose_sub: (f, n) => `${f} ${n} 败北...`,
+    result_draw: '平局', result_draw_sub: '平局',
+    result_close: '继续观看', ad_area: '广告区域',
+    locale: 'zh-CN',
+    names: { KR: '韩国', CN: '中国', JP: '日本', US: '美国' },
+  },
+  JP: {
+    html_lang: 'ja', title: '国別対抗囲碁 🌏', footer: '国別対抗囲碁 · 10分毎に着手 · 韓中日リーグ戦',
+    nav_games: '対局状況', nav_standings: 'ランキング', nav_history: '棋譜履歴',
+    my_team: 'マイチーム', vote_only: '(日/韓/中 IPのみ投票可)',
+    black: '黒', white: '白',
+    move_no: n => `第${n}手`,
+    divine_waiting: '⚡ 神の一手を待っています',
+    next_move: '次の着手', current_turn: '現在の番',
+    click_to_vote: 'クリックして投票', can_vote: '投票できます！', opponent_turn: '相手の番です',
+    h2h_title: '対戦成績', status_title: '現況',
+    prisoners: n => `アゲハマ ${n}個`, total_moves: '総手数',
+    votes_title: n => `投票状況 (${n}箇所)`, no_votes: 'まだ投票なし',
+    btn_pass: 'パス投票', my_vote: c => `投票済: ${c}`,
+    elo_rating: 'ELO レーティング',
+    vote_done: c => `投票完了: ${c}`, vote_fail: '投票失敗',
+    opponent_turn_toast: '現在は相手の番です。',
+    divine_toast: (f, n, c) => `⚡ 神の一手！${f} ${n} → ${c}`,
+    standings_title: '🏆 ELO ランキング', rank: '順位', country: '国',
+    h2h_section: '⚔️ 対戦成績',
+    h2h_col_a: '国 A', h2h_record: '成績 (勝-分-負)', h2h_col_b: '国 B',
+    history_title: '📜 棋譜履歴',
+    loading: '読み込み中...', no_history: 'まだ完了した対局がありません。',
+    history_winner: n => `🏆 ${n} 勝`, history_draw: '引き分け',
+    history_moves: n => `${n}手`,
+    score_line: (bf, bs, wf, ws) => `${bf}黒 ${bs}目  vs  ${wf}白 ${ws}目`,
+    result_win: '勝利！', result_win_sub: (f, n) => `${f} ${n} 勝利！`,
+    result_lose: '敗北', result_lose_sub: (f, n) => `${f} ${n} 敗北...`,
+    result_draw: '引き分け', result_draw_sub: '引き分け',
+    result_close: '引き続き観戦', ad_area: '広告エリア',
+    locale: 'ja-JP',
+    names: { KR: '韓国', CN: '中国', JP: '日本', US: '米国' },
+  },
+  EN: {
+    html_lang: 'en', title: 'Nations Go Championship 🌏', footer: 'Nations Go · Move every 10 min · KR/CN/JP/US League',
+    nav_games: 'Games', nav_standings: 'Rankings', nav_history: 'Game History',
+    my_team: 'My Team', vote_only: '(Voting: KR/CN/JP IPs only)',
+    black: 'Black', white: 'White',
+    move_no: n => `Move ${n}`,
+    divine_waiting: '⚡ Divine Move Waiting',
+    next_move: 'Next move', current_turn: 'Current turn',
+    click_to_vote: 'Click to vote', can_vote: 'You can vote!', opponent_turn: "Opponent's turn",
+    h2h_title: 'Head to Head', status_title: 'Status',
+    prisoners: n => `Captures: ${n}`, total_moves: 'Total moves',
+    votes_title: n => `Votes (${n} spots)`, no_votes: 'No votes yet',
+    btn_pass: 'Vote Pass', my_vote: c => `My vote: ${c}`,
+    elo_rating: 'ELO Rating',
+    vote_done: c => `Voted: ${c}`, vote_fail: 'Vote failed',
+    opponent_turn_toast: "It's the opponent's turn.",
+    divine_toast: (f, n, c) => `⚡ Divine Move! ${f} ${n} → ${c}`,
+    standings_title: '🏆 ELO Rankings', rank: 'Rank', country: 'Country',
+    h2h_section: '⚔️ Head to Head',
+    h2h_col_a: 'Team A', h2h_record: 'Record (W-D-L)', h2h_col_b: 'Team B',
+    history_title: '📜 Game History',
+    loading: 'Loading...', no_history: 'No completed games yet.',
+    history_winner: n => `🏆 ${n} wins`, history_draw: 'Draw',
+    history_moves: n => `${n} moves`,
+    score_line: (bf, bs, wf, ws) => `${bf}Black ${bs}pt  vs  ${wf}White ${ws}pt`,
+    result_win: 'VICTORY!', result_win_sub: (f, n) => `${f} ${n} Wins!`,
+    result_lose: 'DEFEAT', result_lose_sub: (f, n) => `${f} ${n} Loses...`,
+    result_draw: 'DRAW', result_draw_sub: 'Draw',
+    result_close: 'Keep watching', ad_area: 'Advertisement',
+    locale: 'en-US',
+    names: { KR: 'Korea', CN: 'China', JP: 'Japan', US: 'USA' },
+  },
+};
+
+function getLang() {
+  const c = state.myCountry;
+  if (c === 'KR') return LANGS.KR;
+  if (c === 'CN') return LANGS.CN;
+  if (c === 'JP') return LANGS.JP;
+  return LANGS.EN;
+}
+// 번역 함수: key에 따라 문자열 또는 함수 결과 반환
+function T(key, ...args) {
+  const l = getLang();
+  const v = l[key];
+  if (typeof v === 'function') return v(...args);
+  return v ?? key;
+}
+// 국가명 (접속 언어 기준)
+function getCountryName(code) { return getLang().names[code] || code; }
+// 국가 전체 정보 (flag/colors + 현재 언어 name)
+function getCountryInfo(code) {
+  const m = COUNTRY_META[code] || {};
+  return { ...m, name: getCountryName(code) };
+}
+// 정적 HTML 요소에 현재 언어 적용
+function applyLang() {
+  const l = getLang();
+  document.documentElement.lang = l.html_lang;
+  document.title = l.title;
+  const h1 = document.querySelector('header h1');
+  if (h1) h1.textContent = l.title;
+  const btnGames     = document.querySelector('[data-page="games"]');
+  const btnStandings = document.querySelector('[data-page="standings"]');
+  const btnHistory   = document.querySelector('[data-page="history"]');
+  if (btnGames)     btnGames.textContent     = l.nav_games;
+  if (btnStandings) btnStandings.textContent = l.nav_standings;
+  if (btnHistory)   btnHistory.textContent   = l.nav_history;
+  const footer = document.querySelector('footer p');
+  if (footer) footer.textContent = l.footer;
+  const adSpans = document.querySelectorAll('.ad-banner span');
+  adSpans.forEach(s => { s.textContent = l.ad_area; });
+  const closeBtn = document.querySelector('.result-close');
+  if (closeBtn) closeBtn.textContent = l.result_close;
+}
+
+// 하위 호환: 기존 COUNTRY_INFO 참조 제거 → getCountryInfo() 사용
+const COUNTRY_INFO = new Proxy({}, { get: (_, code) => getCountryInfo(code) });
 
 // ── 렌더링 ────────────────────────────────────────────────────────────────
 function renderPage() {
@@ -282,11 +461,11 @@ function renderGameCards() {
   if (!grid) return;
   grid.innerHTML = state.games.map(g => {
     const gs = state.gameStates[g.id];
-    const black = gs?.black || {};
-    const white = gs?.white || {};
+    const blackInfo = getCountryInfo(g.black_code);
+    const whiteInfo = getCountryInfo(g.white_code);
     const isSelected = state.selectedGameId === g.id;
     const turnCode = g.current_turn === 'black' ? g.black_code : g.white_code;
-    const turnInfo = COUNTRY_INFO[turnCode] || {};
+    const turnInfo = getCountryInfo(turnCode);
     const nextAt = new Date(g.next_move_at);
     const remaining = Math.max(0, nextAt - Date.now());
     const mm = String(Math.floor(remaining / 60000)).padStart(2, '0');
@@ -297,24 +476,24 @@ function renderGameCards() {
         <div class="game-card-header">
           <div class="matchup">
             <div class="country">
-              <span class="flag">${black.flag || ''}</span>
-              <span class="cname">${black.name || g.black_code} (흑)</span>
-              <span class="elo">${black.elo || 1500}</span>
+              <span class="flag">${blackInfo.flag}</span>
+              <span class="cname">${blackInfo.name} (${T('black')})</span>
+              <span class="elo">${gs?.black?.elo || 1500}</span>
             </div>
             <span class="vs">vs</span>
             <div class="country">
-              <span class="flag">${white.flag || ''}</span>
-              <span class="cname">${white.name || g.white_code} (백)</span>
-              <span class="elo">${white.elo || 1500}</span>
+              <span class="flag">${whiteInfo.flag}</span>
+              <span class="cname">${whiteInfo.name} (${T('white')})</span>
+              <span class="elo">${gs?.white?.elo || 1500}</span>
             </div>
           </div>
-          <span class="turn-badge">${turnInfo.flag || ''} ${turnInfo.name || ''} 차례</span>
+          <span class="turn-badge">${turnInfo.flag} ${turnInfo.name}</span>
         </div>
         <div style="padding:10px 16px;font-size:0.8rem;color:var(--text-dim);display:flex;justify-content:space-between">
-          <span>제${g.move_number}수</span>
+          <span>${T('move_no', g.move_number)}</span>
           ${isDivineModeActive(g.id, gs)
-            ? `<span style="color:#a855f7;font-weight:bold;animation:divine-pulse 1.5s infinite">⚡ 신의 한수 대기 중</span>`
-            : `<span>다음 착수: <b style="color:var(--gold)">${mm}:${ss}</b></span>`
+            ? `<span style="color:#a855f7;font-weight:bold;animation:divine-pulse 1.5s infinite">${T('divine_waiting')}</span>`
+            : `<span>${T('next_move')}: <b style="color:var(--gold)">${mm}:${ss}</b></span>`
           }
         </div>
       </div>
@@ -358,6 +537,9 @@ function renderGameDetail(gameId) {
   const myVote = state.myVotes[gameId];
   const turnCode = game.current_turn === 'black' ? game.black_code : game.white_code;
   const isMyTurn = state.myCountry && state.myCountry === turnCode;
+  const blackInfo = getCountryInfo(game.black_code);
+  const whiteInfo = getCountryInfo(game.white_code);
+  const turnInfo  = getCountryInfo(turnCode);
 
   detail.innerHTML = `
     <hr style="border-color:var(--bg3);margin-bottom:20px">
@@ -365,54 +547,53 @@ function renderGameDetail(gameId) {
       <div class="board-wrap">
         <div class="timer-bar">
           <div class="turn-info">
-            현재 차례: <span>${COUNTRY_INFO[turnCode]?.flag} ${COUNTRY_INFO[turnCode]?.name} (${game.current_turn === 'black' ? '흑' : '백'})</span>
+            ${T('current_turn')}: <span>${turnInfo.flag} ${turnInfo.name} (${game.current_turn === 'black' ? T('black') : T('white')})</span>
           </div>
           ${isDivineModeActive(gameId, gs)
-            ? `<div class="countdown divine-waiting" id="detail-countdown">⚡ 신의 한수 대기 중</div>`
+            ? `<div class="countdown divine-waiting" id="detail-countdown">${T('divine_waiting')}</div>`
             : `<div class="countdown" id="detail-countdown">--:--</div>`
           }
         </div>
         <canvas id="go-board"></canvas>
         <div style="font-size:0.8rem;color:var(--text-dim);text-align:center">
-          클릭하여 투표 · ${isMyTurn ? '<span style="color:var(--gold)">투표 가능!</span>' : '상대 팀 차례입니다'}
+          ${T('click_to_vote')} · ${isMyTurn ? `<span style="color:var(--gold)">${T('can_vote')}</span>` : T('opponent_turn')}
         </div>
       </div>
 
       <div class="sidebar">
         <!-- 상대전적 -->
         <div class="panel">
-          <h3>상대전적</h3>
+          <h3>${T('h2h_title')}</h3>
           <div class="h2h-row">
-            <span>${black.flag} ${black.name}</span>
+            <span>${blackInfo.flag} ${blackInfo.name}</span>
             <span class="h2h-score">${h2hBlack} - ${h2hDraw} - ${h2hWhite}</span>
-            <span>${white.flag} ${white.name}</span>
+            <span>${whiteInfo.flag} ${whiteInfo.name}</span>
           </div>
-          <div style="font-size:0.75rem;color:var(--text-dim);text-align:center">승 - 무 - 패</div>
         </div>
 
-        <!-- 기보/포로 -->
+        <!-- 현황/포로 -->
         <div class="panel">
-          <h3>현황</h3>
+          <h3>${T('status_title')}</h3>
           <div class="score-row">
-            <span><span class="stone-black"></span>${black.name} (흑)</span>
-            <span>포로 ${game.prisoners_black}개</span>
+            <span><span class="stone-black"></span>${blackInfo.name} (${T('black')})</span>
+            <span>${T('prisoners', game.prisoners_black)}</span>
           </div>
           <div class="score-row">
-            <span><span class="stone-white"></span>${white.name} (백)</span>
-            <span>포로 ${game.prisoners_white}개</span>
+            <span><span class="stone-white"></span>${whiteInfo.name} (${T('white')})</span>
+            <span>${T('prisoners', game.prisoners_white)}</span>
           </div>
           <div class="score-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bg3)">
-            <span style="color:var(--text-dim)">총 수</span>
-            <span>${game.move_number}수</span>
+            <span style="color:var(--text-dim)">${T('total_moves')}</span>
+            <span>${T('move_no', game.move_number)}</span>
           </div>
         </div>
 
         <!-- 투표 현황 -->
         <div class="panel">
-          <h3>투표 현황 (${voteCounts.length}곳)</h3>
+          <h3>${T('votes_title', voteCounts.length)}</h3>
           <div class="vote-list">
             ${topVotes.length === 0
-              ? '<div style="color:var(--text-dim);font-size:0.85rem">아직 투표 없음</div>'
+              ? `<div style="color:var(--text-dim);font-size:0.85rem">${T('no_votes')}</div>`
               : topVotes.map(v => {
                   const coord = v.x !== null
                     ? `${COL_LABELS[v.x]}${BOARD_SIZE - v.y}`
@@ -432,9 +613,9 @@ function renderGameDetail(gameId) {
           </div>
           ${isMyTurn ? `
             <div style="margin-top:10px">
-              <button class="btn-pass" id="btn-pass">패스 투표</button>
+              <button class="btn-pass" id="btn-pass">${T('btn_pass')}</button>
               <div class="my-vote-info" id="my-vote-info">
-                ${myVote ? (myVote.x !== null ? `내 투표: ${COL_LABELS[myVote.x]}${BOARD_SIZE - myVote.y}` : '내 투표: PASS') : ''}
+                ${myVote ? T('my_vote', myVote.x !== null ? `${COL_LABELS[myVote.x]}${BOARD_SIZE - myVote.y}` : 'PASS') : ''}
               </div>
             </div>
           ` : ''}
@@ -442,13 +623,13 @@ function renderGameDetail(gameId) {
 
         <!-- ELO -->
         <div class="panel">
-          <h3>ELO 레이팅</h3>
+          <h3>${T('elo_rating')}</h3>
           <div class="score-row">
-            <span>${black.flag} ${black.name}</span>
+            <span>${blackInfo.flag} ${blackInfo.name}</span>
             <span style="color:var(--accent);font-weight:bold">${black.elo}</span>
           </div>
           <div class="score-row">
-            <span>${white.flag} ${white.name}</span>
+            <span>${whiteInfo.flag} ${whiteInfo.name}</span>
             <span style="color:var(--accent);font-weight:bold">${white.elo}</span>
           </div>
         </div>
@@ -465,7 +646,7 @@ function renderGameDetail(gameId) {
 
   // 캔버스 클릭 투표
   canvas.addEventListener('click', async (e) => {
-    if (!isMyTurn) { showToast('현재 상대 팀 차례입니다.'); return; }
+    if (!isMyTurn) { showToast(T('opponent_turn_toast')); return; }
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / (canvas.style.width ? parseFloat(canvas.style.width) : canvas.width);
     const scaleY = canvas.height / (canvas.style.height ? parseFloat(canvas.style.height) : canvas.height);
@@ -509,9 +690,9 @@ async function submitVote(gameId, x, y) {
     if (data.ok) {
       state.myVotes[gameId] = { x, y };
       const coord = x !== null ? `${COL_LABELS[x]}${BOARD_SIZE - y}` : 'PASS';
-      showToast(`투표 완료: ${coord}`);
+      showToast(T('vote_done', coord));
       const info = document.getElementById('my-vote-info');
-      if (info) info.textContent = `내 투표: ${coord}`;
+      if (info) info.textContent = T('my_vote', coord);
       // 보드 재그리기
       const gs = state.gameStates[gameId];
       if (gs) {
@@ -519,7 +700,7 @@ async function submitVote(gameId, x, y) {
         drawBoard(canvas, gs.board, gs.voteCounts, null, { x, y });
       }
     } else {
-      showToast(data.error || '투표 실패');
+      showToast(data.error || T('vote_fail'));
     }
   } catch {
     showToast('네트워크 오류');
@@ -527,8 +708,6 @@ async function submitVote(gameId, x, y) {
 }
 
 // ── 타이머 ────────────────────────────────────────────────────────────────
-const COL_LABELS = 'ABCDEFGHJKLMNOPQRST';
-
 function startDetailTimer(gameId, nextMoveAt) {
   clearInterval(state.timers['detail']);
   state.timers['detail'] = setInterval(() => {
@@ -538,7 +717,7 @@ function startDetailTimer(gameId, nextMoveAt) {
     // 신의 한수 대기 중이면 타이머 표시 안 함
     const gs = state.gameStates[gameId];
     if (isDivineModeActive(gameId, gs)) {
-      el.textContent = '⚡ 신의 한수 대기 중';
+      el.textContent = T('divine_waiting');
       el.style.color = '#a855f7';
       return;
     }
@@ -562,37 +741,37 @@ async function renderStandingsPage(app) {
   const rankIcon = ['🥇', '🥈', '🥉'];
   app.innerHTML = `
     <div class="standings-wrap">
-      <h2 style="margin-bottom:16px;color:var(--gold)">🏆 ELO 순위표</h2>
+      <h2 style="margin-bottom:16px;color:var(--gold)">${T('standings_title')}</h2>
       <table class="standings-table">
         <thead><tr>
-          <th>순위</th><th>국가</th><th>ELO</th>
+          <th>${T('rank')}</th><th>${T('country')}</th><th>ELO</th>
         </tr></thead>
         <tbody>
           ${standings.map((c, i) => `
             <tr>
               <td class="rank">${rankIcon[i] || i + 1}</td>
-              <td>${c.flag} ${c.name}</td>
+              <td>${c.flag} ${getCountryName(c.code)}</td>
               <td class="elo-val">${c.elo}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
-      <h2 style="margin:28px 0 16px;color:var(--gold)">⚔️ 상대전적</h2>
+      <h2 style="margin:28px 0 16px;color:var(--gold)">${T('h2h_section')}</h2>
       <table class="h2h-table">
         <thead><tr>
-          <th>국가 A</th><th>전적 (승-무-패)</th><th>국가 B</th>
+          <th>${T('h2h_col_a')}</th><th>${T('h2h_record')}</th><th>${T('h2h_col_b')}</th>
         </tr></thead>
         <tbody>
           ${h2hList.map(h => `
             <tr>
-              <td>${h.flag_a} ${h.name_a}</td>
+              <td>${h.flag_a} ${getCountryName(h.country_a)}</td>
               <td style="text-align:center">
                 <span style="color:var(--gold);font-weight:bold">${h.wins_a}</span>
                 <span style="color:var(--text-dim)"> - ${h.draws} - </span>
                 <span style="color:var(--accent);font-weight:bold">${h.wins_b}</span>
               </td>
-              <td>${h.flag_b} ${h.name_b}</td>
+              <td>${h.flag_b} ${getCountryName(h.country_b)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -607,29 +786,32 @@ function renderStandings(standings) {
 
 // ── 기보 히스토리 페이지 ──────────────────────────────────────────────────
 async function renderHistoryPage(app) {
-  app.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:40px">불러오는 중...</div>`;
+  app.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:40px">${T('loading')}</div>`;
   const history = await api('/api/history');
 
   if (history.length === 0) {
-    app.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:40px">아직 완료된 대국이 없습니다.</div>`;
+    app.innerHTML = `<div style="color:var(--text-dim);text-align:center;padding:40px">${T('no_history')}</div>`;
     return;
   }
 
   app.innerHTML = `
-    <h2 style="margin-bottom:16px;color:var(--gold)">📜 기보 히스토리</h2>
+    <h2 style="margin-bottom:16px;color:var(--gold)">${T('history_title')}</h2>
     <div class="history-list">
       ${history.map(g => {
-        const date = new Date(g.ended_at).toLocaleDateString('ko-KR');
+        const date = new Date(g.ended_at).toLocaleDateString(T('locale'));
+        const blackName = getCountryName(g.black_code) || g.black_name;
+        const whiteName = getCountryName(g.white_code) || g.white_name;
+        const winnerName = g.winner_code ? getCountryName(g.winner_code) : null;
         return `
           <div class="history-item">
             <div class="history-matchup">
-              ${g.black_flag} ${g.black_name} (흑) vs ${g.white_flag} ${g.white_name} (백)
+              ${g.black_flag} ${blackName} (${T('black')}) vs ${g.white_flag} ${whiteName} (${T('white')})
             </div>
             <div class="history-winner">
-              ${g.winner_name ? `🏆 ${g.winner_name} 승` : '무승부'}
+              ${winnerName ? T('history_winner', winnerName) : T('history_draw')}
             </div>
-            <div class="history-date">${date} · ${g.move_number}수</div>
-            <button class="btn-sgf" onclick="downloadSGF(${g.id})">SGF 다운로드</button>
+            <div class="history-date">${date} · ${T('history_moves', g.move_number)}</div>
+            <button class="btn-sgf" onclick="downloadSGF(${g.id})">SGF</button>
           </div>
         `;
       }).join('')}
@@ -720,33 +902,37 @@ function showResultOverlay(type, countryCode, blackScore, whiteScore, blackCode,
   const scoreEl  = document.getElementById('result-score');
   const bgEl     = overlay.querySelector('.result-bg');
 
-  const info     = COUNTRY_INFO[countryCode] || {};
-  const blackInfo = COUNTRY_INFO[blackCode] || {};
-  const whiteInfo = COUNTRY_INFO[whiteCode] || {};
+  const info      = getCountryInfo(countryCode);
+  const blackInfo = getCountryInfo(blackCode);
+  const whiteInfo = getCountryInfo(whiteCode);
 
   flagEl.textContent = info.flag || '🏁';
   bgEl.className = 'result-bg ' + type;
 
   if (type === 'win') {
-    textEl.textContent  = 'VICTORY!';
+    textEl.textContent  = T('result_win');
     textEl.className    = 'result-text win';
-    subEl.textContent   = `${info.flag} ${info.name}의 승리!`;
+    subEl.textContent   = T('result_win_sub', info.flag, info.name);
     startConfetti(info.colors || ['#FFD700', '#FF6B6B', '#4ECDC4']);
   } else if (type === 'lose') {
-    textEl.textContent  = 'DEFEAT';
+    textEl.textContent  = T('result_lose');
     textEl.className    = 'result-text lose';
-    subEl.textContent   = `${info.flag} ${info.name} 패배...`;
+    subEl.textContent   = T('result_lose_sub', info.flag, info.name);
     document.body.classList.add('shake');
     setTimeout(() => document.body.classList.remove('shake'), 700);
   } else {
-    textEl.textContent  = 'DRAW';
+    textEl.textContent  = T('result_draw');
     textEl.className    = 'result-text draw';
-    subEl.textContent   = '무승부';
+    subEl.textContent   = T('result_draw_sub');
   }
 
   const bs = blackScore?.toFixed(1) ?? '?';
   const ws = whiteScore?.toFixed(1) ?? '?';
-  scoreEl.textContent = `${blackInfo.flag}흑 ${bs}집  vs  ${whiteInfo.flag}백 ${ws}집`;
+  scoreEl.textContent = T('score_line', blackInfo.flag, bs, whiteInfo.flag, ws);
+
+  // 결과 닫기 버튼 텍스트도 현재 언어로
+  const closeBtn = document.querySelector('.result-close');
+  if (closeBtn) closeBtn.textContent = T('result_close');
 
   overlay.classList.add('show');
 
@@ -817,6 +1003,8 @@ function stopConfetti() {
 
 // ── 초기화 ────────────────────────────────────────────────────────────────
 async function init() {
+  applyLang(); // 초기 기본 언어 (EN) 적용
+
   // 네비게이션
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
