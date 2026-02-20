@@ -77,6 +77,11 @@ try {
   db.exec(`ALTER TABLE games ADD COLUMN prev_board_state TEXT`);
 } catch {}
 
+// divine_mode 컬럼 마이그레이션: 1 = 신의 한수 대기 중 (투표 1개로 즉시 착수)
+try {
+  db.exec(`ALTER TABLE games ADD COLUMN divine_mode INTEGER NOT NULL DEFAULT 0`);
+} catch {}
+
 // 초기 국가 데이터 (한중일 + 미국)
 const initCountries = db.prepare(`
   INSERT OR IGNORE INTO countries (code, name, flag, elo) VALUES (?, ?, ?, 1500)

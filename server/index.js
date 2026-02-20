@@ -8,6 +8,7 @@ const { countryMiddleware } = require('./geoip');
 const {
   initLeagueGames,
   processDueTurns,
+  executeImmediateDivineMove,
   setOnFinishCallback,
   getGameState,
   getStandings,
@@ -74,22 +75,20 @@ setOnFinishCallback((finishInfo) => {
 cron.schedule('*/10 * * * *', () => {
   console.log('[Cron] 착수 처리 시작:', new Date().toISOString());
   processDueTurns((gameId, result) => {
+    // 신의 한수 대기 모드 진입
+    if (result.divineMode) {
+      const state = getGameState(gameId);
+      if (state) broadcast(gameId, { state });
+      broadcast(gameId, {
+        type: 'divine_mode_start',
+        gameId,
+        votingCountry: result.votingCountry,
+      });
+      return;
+    }
+
     const state = getGameState(gameId);
     if (state) broadcast(gameId, { state });
-
-    // 신의 한수 이벤트
-    if (result.isDivine && !result.resolved.pass) {
-      const g = db.prepare(`SELECT * FROM games WHERE id = ?`).get(gameId);
-      const country = result.resolved.color === 'black' ? g?.black_code : g?.white_code;
-      broadcast(gameId, {
-        type: 'divine_move',
-        gameId,
-        x: result.resolved.x,
-        y: result.resolved.y,
-        countryCode: country,
-      });
-      console.log(`[신의 한수] game#${gameId} ${country} (${result.resolved.x},${result.resolved.y})`);
-    }
   });
   broadcastAll({ type: 'standings', standings: getStandings() });
 });
@@ -148,7 +147,41 @@ app.post('/api/games/:id/vote', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(gameId, game.move_number, ip, countryCode, x ?? null, y ?? null);
 
-    // 실시간 투표 현황 브로드캐스트
+    // ── 신의 한수 모드: 1표 즉시 착수 ──────────────────────────────────────
+    if (game.divine_mode === 1) {
+      const freshGame = db.prepare(`SELECT * FROM games WHERE id = ?`).get(gameId);
+      const divineResult = executeImmediateDivineMove(freshGame, x ?? null, y ?? null);
+
+      if (!divineResult.ok) {
+        // 자충수/Ko 등 유효하지 않은 착수 → divine_mode 유지, 재투표 안내
+        return res.status(400).json({
+          error: `신의 한수 착수 불가: ${divineResult.error}. 다른 위치를 투표해 주세요.`,
+          divine: true,
+        });
+      }
+
+      const state = getGameState(gameId);
+      if (state) broadcast(gameId, { state });
+
+      const labels = 'ABCDEFGHJKLMNOPQRST';
+      const coord = x !== null ? `${labels[x]}${19 - y}` : 'PASS';
+      broadcast(gameId, {
+        type: 'divine_move_executed',
+        gameId,
+        votingCountry: countryCode,
+        coord,
+        finished: divineResult.finished,
+      });
+      console.log(`[신의 한수] game#${gameId} ${countryCode} → ${coord} 즉시 착수`);
+
+      if (divineResult.finished) {
+        broadcastAll({ type: 'standings', standings: getStandings() });
+      }
+
+      return res.json({ ok: true, divine: true, coord });
+    }
+
+    // ── 일반 투표 현황 브로드캐스트 ────────────────────────────────────────
     const state = getGameState(gameId);
     broadcast(gameId, { state });
 

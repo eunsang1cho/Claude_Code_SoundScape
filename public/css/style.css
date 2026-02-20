@@ -181,8 +181,15 @@ main {
   font-size: 0.9rem;
 }
 .timer-bar .countdown { font-size: 1.3rem; font-weight: bold; color: var(--gold); font-variant-numeric: tabular-nums; }
+.timer-bar .countdown.divine-waiting { color: #a855f7; font-size: 1rem; }
 .turn-info { color: var(--text-dim); }
 .turn-info span { color: var(--text); font-weight: bold; }
+
+/* ── 신의 한수 펄스 애니메이션 ── */
+@keyframes divine-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
 
 /* ── Sidebar ──────────────────────────────────── */
 .sidebar {

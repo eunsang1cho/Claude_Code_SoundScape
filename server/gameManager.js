@@ -1,5 +1,5 @@
 const db = require('./db');
-const { emptyBoard, placeStone, resolveBestMove, getDivineMove, scoreBoard, toSGFCoord } = require('./goEngine');
+const { emptyBoard, placeStone, resolveBestMove, scoreBoard, toSGFCoord } = require('./goEngine');
 
 // ELO 계산
 function calcElo(winnerElo, loserElo, kFactor = 32) {
@@ -67,20 +67,16 @@ function processTurn(game) {
   // Ko 체크용: 2수 전 보드 상태
   const prevBoardArr = game.prev_board_state ? JSON.parse(game.prev_board_state) : null;
 
-  // 신의 한수: 투표 0개일 때 랜덤 유효 착수
-  let isDivine = false;
-  let resolved;
+  // 투표 0개 → 신의 한수 대기 모드 진입 (착수 없음, 무한 대기)
   if (voteCounts.length === 0) {
-    const divine = getDivineMove(board, color, prevBoardArr);
-    if (divine) {
-      resolved = { pass: false, x: divine.x, y: divine.y, result: divine.result };
-      isDivine = true;
-    } else {
-      resolved = { pass: true };
-    }
-  } else {
-    resolved = resolveBestMove(voteCounts, board, color, prevBoardArr);
+    db.prepare(`
+      UPDATE games SET divine_mode = 1, next_move_at = '2099-01-01T00:00:00.000Z' WHERE id = ?
+    `).run(game.id);
+    console.log(`[신의 한수] game#${game.id} ${votingCountry} 투표 0개 → 신의 한수 대기 시작`);
+    return { divineMode: true, gameId: game.id, votingCountry };
   }
+
+  const resolved = resolveBestMove(voteCounts, board, color, prevBoardArr);
 
   let newBoard = board;
   let captured = 0;
@@ -98,11 +94,11 @@ function processTurn(game) {
       ? `;B[${toSGFCoord(x, y)}]`
       : `;W[${toSGFCoord(x, y)}]`;
 
-    // 착수 기록 (신의 한수는 vote_count = -1 표시)
+    // 착수 기록
     db.prepare(`
       INSERT INTO moves (game_id, move_number, x, y, color, vote_count)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(game.id, game.move_number, x, y, game.current_turn, isDivine ? -1 : (voteCounts[0]?.count || 0));
+    `).run(game.id, game.move_number, x, y, game.current_turn, voteCounts[0]?.count || 0);
   }
 
   // 연속 패스 2회 → 게임 종료
@@ -122,7 +118,7 @@ function processTurn(game) {
 
   if (bothPassed) {
     finishGame(game, newBoard, newSGF, newPrisoners);
-    return { resolved, captured, newBoard, newMoveNo, finished: true, isDivine };
+    return { resolved, captured, newBoard, newMoveNo, finished: true };
   } else {
     db.prepare(`
       UPDATE games SET
@@ -148,7 +144,7 @@ function processTurn(game) {
     );
   }
 
-  return { resolved, captured, newBoard, newMoveNo, finished: false, isDivine };
+  return { resolved, captured, newBoard, newMoveNo, finished: false };
 }
 
 // onFinish 콜백: 종료 이벤트를 index.js로 전달
@@ -220,11 +216,11 @@ function updateHeadToHead(codeA, codeB, winnerCode) {
   }
 }
 
-// 만료된 턴 처리 (cron에서 호출)
+// 만료된 턴 처리 (cron에서 호출) - divine_mode 게임은 제외
 function processDueTurns(broadcast) {
   const dueGames = db.prepare(`
     SELECT * FROM games
-    WHERE status = 'active' AND next_move_at <= datetime('now')
+    WHERE status = 'active' AND divine_mode = 0 AND next_move_at <= datetime('now')
   `).all();
 
   for (const game of dueGames) {
@@ -235,6 +231,92 @@ function processDueTurns(broadcast) {
       console.error(`[Game] 착수 처리 오류 game#${game.id}:`, e.message);
     }
   }
+}
+
+// 신의 한수: 대기 중인 게임에서 단 1표(x,y)로 즉시 착수
+// 반환: { ok, resolved, captured, newBoard, newMoveNo, finished } | { ok: false, error }
+function executeImmediateDivineMove(game, x, y) {
+  const board = JSON.parse(game.board_state);
+  const color = game.current_turn === 'black' ? 1 : 2;
+  const prevBoardArr = game.prev_board_state ? JSON.parse(game.prev_board_state) : null;
+
+  let resolved;
+  if (x === null || y === null) {
+    resolved = { pass: true };
+  } else {
+    const result = placeStone(board, x, y, color, prevBoardArr);
+    if (!result.ok) {
+      // 유효하지 않은 착수 → divine_mode 유지, 다음 투표 대기
+      return { ok: false, error: result.error };
+    }
+    resolved = { pass: false, x, y, result };
+  }
+
+  let newBoard = board;
+  let captured = 0;
+  let sgfMove = '';
+
+  if (resolved.pass) {
+    sgfMove = game.current_turn === 'black' ? ';B[]' : ';W[]';
+  } else {
+    const { x: rx, y: ry, result } = resolved;
+    newBoard = result.board;
+    captured = result.captured;
+    sgfMove = game.current_turn === 'black'
+      ? `;B[${toSGFCoord(rx, ry)}]`
+      : `;W[${toSGFCoord(rx, ry)}]`;
+
+    // 신의 한수 착수 기록 (vote_count = -1: 신의 한수 표시)
+    db.prepare(`
+      INSERT INTO moves (game_id, move_number, x, y, color, vote_count)
+      VALUES (?, ?, ?, ?, ?, -1)
+    `).run(game.id, game.move_number, rx, ry, game.current_turn);
+  }
+
+  const lastMove = db.prepare(`
+    SELECT x, y FROM moves WHERE game_id = ? ORDER BY move_number DESC LIMIT 1
+  `).get(game.id);
+  const bothPassed = resolved.pass && lastMove && lastMove.x === null && lastMove.y === null;
+
+  const newTurn = game.current_turn === 'black' ? 'white' : 'black';
+  const newMoveNo = game.move_number + 1;
+  const newPrisoners = game.current_turn === 'black'
+    ? { black: game.prisoners_black + captured, white: game.prisoners_white }
+    : { black: game.prisoners_black, white: game.prisoners_white + captured };
+  const newSGF = game.sgf + sgfMove;
+
+  if (bothPassed) {
+    finishGame(game, newBoard, newSGF, newPrisoners);
+    return { ok: true, resolved, captured, newBoard, newMoveNo, finished: true };
+  }
+
+  // 착수 성공 → divine_mode 해제, 다음 10분 타이머 재시작
+  db.prepare(`
+    UPDATE games SET
+      board_state = ?,
+      prev_board_state = ?,
+      current_turn = ?,
+      move_number = ?,
+      prisoners_black = ?,
+      prisoners_white = ?,
+      next_move_at = ?,
+      divine_mode = 0,
+      sgf = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify(newBoard),
+    game.board_state,
+    newTurn,
+    newMoveNo,
+    newPrisoners.black,
+    newPrisoners.white,
+    nextMoveAt(),
+    newSGF,
+    game.id
+  );
+
+  console.log(`[신의 한수] game#${game.id} 착수 완료 (${x},${y}), divine_mode 해제`);
+  return { ok: true, resolved, captured, newBoard, newMoveNo, finished: false };
 }
 
 // 현재 게임 상태 + 투표 현황
@@ -303,6 +385,7 @@ function getGameHistory(limit = 20, offset = 0) {
 module.exports = {
   initLeagueGames,
   processDueTurns,
+  executeImmediateDivineMove,
   setOnFinishCallback,
   getGameState,
   getStandings,

@@ -294,34 +294,32 @@ test('[FI-1] 투표 0개 → resolveBestMove 패스 반환', () => {
   assert(result.pass, '빈 투표에서 패스 아님');
 });
 
-test('[FI-2] 투표 0개 → getDivineMove 유효 수 반환 (신의 한수 발동)', () => {
+// ─── FI-2 ~ FI-4: 신의 한수 개념 검증 ─────────────────────────────────
+// 신의 한수 = 투표 0개로 10분 경과 → divine_mode=1 (무한 대기) 진입
+//             이후 단 1표만 오면 즉시 착수 실행 (gameManager 레벨 처리)
+
+test('[FI-2] 투표 0개 → resolveBestMove pass (게임매니저가 divine_mode=1 전환)', () => {
   const b = emptyBoard();
-  const divine = getDivineMove(b, 1, null);
-  assert(divine !== null, '신의 한수 null 반환');
-  assert(divine.x >= 0 && divine.x < SIZE, `x 범위 이상: ${divine.x}`);
-  assert(divine.y >= 0 && divine.y < SIZE, `y 범위 이상: ${divine.y}`);
-  assert(divine.result.ok, `착수 유효성 실패: ${divine.result.error}`);
-  console.log(c.dim(`    → 신의 한수: (${divine.x},${divine.y})`));
+  const result = resolveBestMove([], b, 1, null);
+  assert(result.pass, '빈 투표에서 패스 아님');
+  console.log(c.dim('    → resolveBestMove([])=pass → gameManager: divine_mode=1, 무한 대기'));
 });
 
-test('[FI-3] 거의 꽉 찬 보드에서도 getDivineMove 성공', () => {
+test('[FI-3] 신의 한수 상황: 단 1표로 즉시 착수 가능', () => {
   const b = emptyBoard();
-  // 361칸 중 1칸만 비움: (10,10)
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      if (!(x === 10 && y === 10)) b[idx(x, y)] = (x + y) % 2 === 0 ? 1 : 2;
-    }
-  }
-  const divine = getDivineMove(b, 1, null);
-  // (10,10)이 자충수가 아니면 성공, 자충수면 null (pass)
-  console.log(c.dim(`    → 결과: ${divine ? `(${divine.x},${divine.y})` : 'null(pass)'}`));
-  // null이어도 OK - 유효 수가 없는 경우
+  const votes = [{ x: 9, y: 9, count: 1 }]; // 신의 한수 시 첫 번째 투표
+  const result = resolveBestMove(votes, b, 1, null);
+  assert(!result.pass, '1표인데 패스됨');
+  assert(result.x === 9 && result.y === 9, `착수 위치 틀림: (${result.x},${result.y})`);
+  console.log(c.dim('    → 신의 한수 1표 → resolveBestMove 통과 → 즉시 착수'));
 });
 
-test('[FI-4] 보드 완전히 꽉 찼을 때 getDivineMove null 반환', () => {
-  const b = new Array(SIZE * SIZE).fill(1);
-  const divine = getDivineMove(b, 2, null);
-  assert(divine === null, `꽉 찬 보드에서 신의 한수 반환됨: (${divine?.x},${divine?.y})`);
+test('[FI-4] 신의 한수 중 무효 착수(돌 있는 곳) → placeStone 거부 → divine_mode 유지', () => {
+  const b = emptyBoard();
+  b[idx(9, 9)] = 1;
+  const r = placeStone(b, 9, 9, 2, null);
+  assert(!r.ok, '이미 돌 있는 곳에 착수됨');
+  console.log(c.dim(`    → 무효 착수: ${r.error} → divine_mode 유지, 재투표 대기`));
 });
 
 // ── 7-2. 동점 처리 ───────────────────────────────────────────────

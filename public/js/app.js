@@ -182,11 +182,16 @@ function connectWS() {
 
       if (msg.type === 'standings') renderStandings(msg.standings);
 
-      if (msg.type === 'divine_move') {
-        const info = COUNTRY_INFO[msg.countryCode] || {};
-        const labels = 'ABCDEFGHJKLMNOPQRST';
-        const coord = msg.x !== null ? `${labels[msg.x]}${SIZE - msg.y}` : 'PASS';
-        showDivineToast(`⚡ 신의 한수! ${info.flag} ${info.name} → ${coord}`);
+      // 신의 한수 대기 모드 시작 (투표 0개로 10분 경과)
+      if (msg.type === 'divine_mode_start') {
+        setDivineModeActive(msg.gameId, msg.votingCountry, true);
+      }
+
+      // 신의 한수 즉시 착수 완료
+      if (msg.type === 'divine_move_executed') {
+        setDivineModeActive(msg.gameId, null, false);
+        const info = COUNTRY_INFO[msg.votingCountry] || {};
+        showDivineToast(`⚡ 신의 한수! ${info.flag} ${info.name} → ${msg.coord}`);
       }
 
       if (msg.type === 'game_finished') {
@@ -307,7 +312,10 @@ function renderGameCards() {
         </div>
         <div style="padding:10px 16px;font-size:0.8rem;color:var(--text-dim);display:flex;justify-content:space-between">
           <span>제${g.move_number}수</span>
-          <span>다음 착수: <b style="color:var(--gold)">${mm}:${ss}</b></span>
+          ${isDivineModeActive(g.id, gs)
+            ? `<span style="color:#a855f7;font-weight:bold;animation:divine-pulse 1.5s infinite">⚡ 신의 한수 대기 중</span>`
+            : `<span>다음 착수: <b style="color:var(--gold)">${mm}:${ss}</b></span>`
+          }
         </div>
       </div>
     `;
@@ -359,7 +367,10 @@ function renderGameDetail(gameId) {
           <div class="turn-info">
             현재 차례: <span>${COUNTRY_INFO[turnCode]?.flag} ${COUNTRY_INFO[turnCode]?.name} (${game.current_turn === 'black' ? '흑' : '백'})</span>
           </div>
-          <div class="countdown" id="detail-countdown">--:--</div>
+          ${isDivineModeActive(gameId, gs)
+            ? `<div class="countdown divine-waiting" id="detail-countdown">⚡ 신의 한수 대기 중</div>`
+            : `<div class="countdown" id="detail-countdown">--:--</div>`
+          }
         </div>
         <canvas id="go-board"></canvas>
         <div style="font-size:0.8rem;color:var(--text-dim);text-align:center">
@@ -523,6 +534,15 @@ function startDetailTimer(gameId, nextMoveAt) {
   state.timers['detail'] = setInterval(() => {
     const el = document.getElementById('detail-countdown');
     if (!el) { clearInterval(state.timers['detail']); return; }
+
+    // 신의 한수 대기 중이면 타이머 표시 안 함
+    const gs = state.gameStates[gameId];
+    if (isDivineModeActive(gameId, gs)) {
+      el.textContent = '⚡ 신의 한수 대기 중';
+      el.style.color = '#a855f7';
+      return;
+    }
+
     const remaining = Math.max(0, new Date(nextMoveAt) - Date.now());
     const mm = String(Math.floor(remaining / 60000)).padStart(2, '0');
     const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0');
@@ -622,6 +642,27 @@ function downloadSGF(gameId) {
   a.href = `/api/games/${gameId}/sgf`;
   a.download = `game_${gameId}.sgf`;
   a.click();
+}
+
+// ── 신의 한수 대기 상태 관리 ─────────────────────────────────────────────
+// divineModeGames: { gameId: votingCountry } - 신의 한수 대기 중인 게임들
+const divineModeGames = {};
+
+function setDivineModeActive(gameId, votingCountry, active) {
+  if (active) {
+    divineModeGames[gameId] = votingCountry;
+  } else {
+    delete divineModeGames[gameId];
+  }
+  // 현재 보고 있는 게임이면 UI 갱신
+  if (state.selectedGameId === gameId) renderGameDetail(gameId);
+  renderGameCards();
+}
+
+// 현재 게임이 신의 한수 대기 중인지 (state.game.divine_mode 또는 캐시)
+function isDivineModeActive(gameId, gameState) {
+  return divineModeGames[gameId] !== undefined
+    || (gameState?.game?.divine_mode === 1);
 }
 
 // ── 신의 한수 토스트 (특별 스타일) ───────────────────────────────────────
