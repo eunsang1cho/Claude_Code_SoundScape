@@ -36,6 +36,19 @@
     <p>국가대항전 바둑 · 10분마다 착수 · 한중일 리그전</p>
   </footer>
 
+  <!-- Win/Lose/Draw 오버레이 -->
+  <canvas id="confetti-canvas"></canvas>
+  <div id="result-overlay">
+    <div class="result-bg"></div>
+    <div class="result-inner">
+      <div class="result-flag" id="result-flag">🏁</div>
+      <div class="result-text" id="result-text">VICTORY</div>
+      <div class="result-sub" id="result-sub"></div>
+      <div class="result-score" id="result-score"></div>
+      <button class="result-close" onclick="closeResultOverlay()">계속 보기</button>
+    </div>
+  </div>
+
   <script src="/js/app.js"></script>
 </body>
 </html>

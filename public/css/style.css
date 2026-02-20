@@ -320,6 +320,135 @@ main {
 }
 .btn-sgf:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ── WIN / LOSE / DRAW 오버레이 ───────────────── */
+#result-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .4s;
+}
+#result-overlay.show { opacity: 1; pointer-events: auto; }
+
+#confetti-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  pointer-events: none;
+}
+
+.result-bg {
+  position: absolute;
+  inset: 0;
+  transition: opacity .4s;
+}
+.result-bg.win  { background: radial-gradient(ellipse at center, rgba(10,20,40,0.92) 0%, rgba(0,0,0,0.97) 100%); }
+.result-bg.lose { background: radial-gradient(ellipse at center, rgba(60,0,0,0.93) 0%, rgba(0,0,0,0.97) 100%); }
+.result-bg.draw { background: radial-gradient(ellipse at center, rgba(20,20,50,0.92) 0%, rgba(0,0,0,0.97) 100%); }
+
+.result-inner {
+  position: relative;
+  text-align: center;
+  z-index: 1;
+  transform: scale(0.6);
+  transition: transform .5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+#result-overlay.show .result-inner { transform: scale(1); }
+
+.result-flag {
+  font-size: 7rem;
+  line-height: 1;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 30px rgba(255,255,255,0.4));
+  animation: flagFloat 2s ease-in-out infinite;
+}
+@keyframes flagFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%       { transform: translateY(-12px) rotate(2deg); }
+}
+
+.result-text {
+  font-size: 6rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+}
+.result-text.win {
+  color: #FFD700;
+  text-shadow:
+    0 0 20px #FFD700,
+    0 0 60px #FFA500,
+    0 0 100px #FF8C00,
+    4px 4px 0 #8B6914;
+  animation: winPulse 1.5s ease-in-out infinite;
+}
+@keyframes winPulse {
+  0%, 100% { text-shadow: 0 0 20px #FFD700, 0 0 60px #FFA500, 0 0 100px #FF8C00, 4px 4px 0 #8B6914; }
+  50%       { text-shadow: 0 0 40px #FFD700, 0 0 100px #FFA500, 0 0 160px #FF8C00, 4px 4px 0 #8B6914; }
+}
+.result-text.lose {
+  color: #ff4444;
+  text-shadow: 0 0 20px #ff0000, 4px 4px 0 #6b0000;
+  animation: loseDim .8s ease-in-out infinite alternate;
+}
+@keyframes loseDim {
+  from { opacity: 1; }
+  to   { opacity: 0.6; }
+}
+.result-text.draw {
+  color: #aabbff;
+  text-shadow: 0 0 20px #6688ff, 4px 4px 0 #223388;
+}
+
+.result-sub {
+  font-size: 1.6rem;
+  color: rgba(255,255,255,0.8);
+  margin-bottom: 12px;
+  letter-spacing: .05em;
+}
+.result-score {
+  font-size: 1.1rem;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 28px;
+}
+
+.result-close {
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.3);
+  color: #fff;
+  padding: 12px 40px;
+  border-radius: 30px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: .05em;
+}
+.result-close:hover {
+  background: rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.6);
+  transform: scale(1.05);
+}
+
+/* 화면 흔들림 (LOSE) */
+@keyframes screenShake {
+  0%,100% { transform: translateX(0); }
+  10%      { transform: translateX(-8px) rotate(-0.5deg); }
+  20%      { transform: translateX(8px) rotate(0.5deg); }
+  30%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  50%      { transform: translateX(-4px); }
+  60%      { transform: translateX(4px); }
+  70%      { transform: translateX(-2px); }
+  80%      { transform: translateX(2px); }
+}
+body.shake { animation: screenShake .6s ease-out; }
+
 /* ── Toast ────────────────────────────────────── */
 #toast {
   position: fixed;

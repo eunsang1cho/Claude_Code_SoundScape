@@ -173,12 +173,29 @@ function connectWS() {
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
+
       if (msg.type === 'update' && msg.state) {
         state.gameStates[msg.gameId] = msg.state;
         if (state.selectedGameId === msg.gameId) renderGameDetail(msg.gameId);
         renderGameCards();
       }
+
       if (msg.type === 'standings') renderStandings(msg.standings);
+
+      if (msg.type === 'game_finished') {
+        // 내가 참가 중인 게임인지 확인
+        const myCode = state.myCountry;
+        if (myCode && (msg.blackCode === myCode || msg.whiteCode === myCode)) {
+          let type;
+          if (!msg.winnerCode)           type = 'draw';
+          else if (msg.winnerCode === myCode) type = 'win';
+          else                           type = 'lose';
+
+          showResultOverlay(type, myCode, msg.blackScore, msg.whiteScore, msg.blackCode, msg.whiteCode);
+        }
+        // 선택된 게임이면 게임 목록 갱신
+        fetchGames().then(renderGameCards);
+      }
     } catch {}
   };
 
@@ -222,9 +239,10 @@ async function fetchGames() {
 
 // ── 국가 정보 ─────────────────────────────────────────────────────────────
 const COUNTRY_INFO = {
-  KR: { name: '한국', flag: '🇰🇷' },
-  CN: { name: '중국', flag: '🇨🇳' },
-  JP: { name: '일본', flag: '🇯🇵' },
+  KR: { name: '한국', flag: '🇰🇷', colors: ['#C60C30', '#003478', '#ffffff'] },
+  CN: { name: '중국', flag: '🇨🇳', colors: ['#DE2910', '#FFDE00', '#FF6B6B'] },
+  JP: { name: '일본', flag: '🇯🇵', colors: ['#BC002D', '#ffffff', '#FF6B9D'] },
+  US: { name: '미국', flag: '🇺🇸', colors: ['#B22234', '#3C3B6E', '#ffffff'] },
 };
 
 // ── 렌더링 ────────────────────────────────────────────────────────────────
@@ -612,6 +630,112 @@ function showToast(msg) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Win/Lose/Draw 오버레이 ──────────────────────────────────────────────
+let confettiAnim = null;
+
+function showResultOverlay(type, countryCode, blackScore, whiteScore, blackCode, whiteCode) {
+  const overlay  = document.getElementById('result-overlay');
+  const flagEl   = document.getElementById('result-flag');
+  const textEl   = document.getElementById('result-text');
+  const subEl    = document.getElementById('result-sub');
+  const scoreEl  = document.getElementById('result-score');
+  const bgEl     = overlay.querySelector('.result-bg');
+
+  const info     = COUNTRY_INFO[countryCode] || {};
+  const blackInfo = COUNTRY_INFO[blackCode] || {};
+  const whiteInfo = COUNTRY_INFO[whiteCode] || {};
+
+  flagEl.textContent = info.flag || '🏁';
+  bgEl.className = 'result-bg ' + type;
+
+  if (type === 'win') {
+    textEl.textContent  = 'VICTORY!';
+    textEl.className    = 'result-text win';
+    subEl.textContent   = `${info.flag} ${info.name}의 승리!`;
+    startConfetti(info.colors || ['#FFD700', '#FF6B6B', '#4ECDC4']);
+  } else if (type === 'lose') {
+    textEl.textContent  = 'DEFEAT';
+    textEl.className    = 'result-text lose';
+    subEl.textContent   = `${info.flag} ${info.name} 패배...`;
+    document.body.classList.add('shake');
+    setTimeout(() => document.body.classList.remove('shake'), 700);
+  } else {
+    textEl.textContent  = 'DRAW';
+    textEl.className    = 'result-text draw';
+    subEl.textContent   = '무승부';
+  }
+
+  const bs = blackScore?.toFixed(1) ?? '?';
+  const ws = whiteScore?.toFixed(1) ?? '?';
+  scoreEl.textContent = `${blackInfo.flag}흑 ${bs}집  vs  ${whiteInfo.flag}백 ${ws}집`;
+
+  overlay.classList.add('show');
+
+  // 8초 후 자동 닫기
+  setTimeout(closeResultOverlay, 8000);
+}
+
+function closeResultOverlay() {
+  const overlay = document.getElementById('result-overlay');
+  overlay.classList.remove('show');
+  stopConfetti();
+}
+
+// ── 컨페티 ───────────────────────────────────────────────────────────────
+function startConfetti(colors) {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = Array.from({ length: 160 }, () => ({
+    x:    Math.random() * canvas.width,
+    y:    Math.random() * -canvas.height,
+    vx:   (Math.random() - 0.5) * 4,
+    vy:   2 + Math.random() * 4,
+    size: 6 + Math.random() * 10,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rotation: Math.random() * 360,
+    rotSpeed: (Math.random() - 0.5) * 8,
+    shape: Math.random() > 0.5 ? 'rect' : 'circle',
+  }));
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.05; // 중력
+      p.rotation += p.rotSpeed;
+      if (p.y > canvas.height + 20) {
+        p.y = -20;
+        p.x = Math.random() * canvas.width;
+        p.vy = 2 + Math.random() * 4;
+      }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      if (p.shape === 'rect') {
+        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+    confettiAnim = requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function stopConfetti() {
+  if (confettiAnim) { cancelAnimationFrame(confettiAnim); confettiAnim = null; }
+  const canvas = document.getElementById('confetti-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 }
 
 // ── 초기화 ────────────────────────────────────────────────────────────────

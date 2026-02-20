@@ -24,6 +24,7 @@ db.exec(`
     current_turn TEXT NOT NULL DEFAULT 'black',
     move_number INTEGER NOT NULL DEFAULT 0,
     board_state TEXT NOT NULL DEFAULT '',   -- JSON array 361 cells
+    prev_board_state TEXT,                  -- Ko 체크용: 2수 전 보드
     prisoners_black INTEGER NOT NULL DEFAULT 0,
     prisoners_white INTEGER NOT NULL DEFAULT 0,
     next_move_at TEXT NOT NULL,
@@ -71,19 +72,29 @@ db.exec(`
   );
 `);
 
-// 초기 국가 데이터 (한중일)
+// prev_board_state 컬럼 마이그레이션 (기존 DB 호환)
+try {
+  db.exec(`ALTER TABLE games ADD COLUMN prev_board_state TEXT`);
+} catch {}
+
+// 초기 국가 데이터 (한중일 + 미국)
 const initCountries = db.prepare(`
   INSERT OR IGNORE INTO countries (code, name, flag, elo) VALUES (?, ?, ?, 1500)
 `);
 initCountries.run('KR', '한국', '🇰🇷');
 initCountries.run('CN', '중국', '🇨🇳');
 initCountries.run('JP', '일본', '🇯🇵');
+initCountries.run('US', '미국', '🇺🇸');
 
-// 상대전적 초기화 (양방향)
-const pairs = [['KR','CN'],['KR','JP'],['CN','JP']];
+// 상대전적 초기화 (4개국 6쌍 - 정렬된 키 사용)
+const allCodes = ['CN', 'JP', 'KR', 'US'];
 const initH2H = db.prepare(`
   INSERT OR IGNORE INTO head_to_head (country_a, country_b) VALUES (?, ?)
 `);
-pairs.forEach(([a, b]) => initH2H.run(a, b));
+for (let i = 0; i < allCodes.length; i++) {
+  for (let j = i + 1; j < allCodes.length; j++) {
+    initH2H.run(allCodes[i], allCodes[j]);
+  }
+}
 
 module.exports = db;

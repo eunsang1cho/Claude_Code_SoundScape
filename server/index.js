@@ -8,6 +8,7 @@ const { countryMiddleware } = require('./geoip');
 const {
   initLeagueGames,
   processDueTurns,
+  setOnFinishCallback,
   getGameState,
   getStandings,
   getActiveGames,
@@ -56,6 +57,17 @@ function broadcastAll(payload) {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
   }
 }
+
+// ── 게임 종료 브로드캐스트 ──────────────────────────────────────────────────
+setOnFinishCallback((finishInfo) => {
+  // 모든 구독자에게 game_finished 이벤트 전송
+  const data = JSON.stringify({ type: 'game_finished', ...finishInfo });
+  for (const [ws] of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  }
+  // 순위 갱신도 함께
+  setTimeout(() => broadcastAll({ type: 'standings', standings: getStandings() }), 500);
+});
 
 // ── 10분 cron ─────────────────────────────────────────────────────────────
 // 매 10분마다 실행 (0,10,20,30,40,50분)

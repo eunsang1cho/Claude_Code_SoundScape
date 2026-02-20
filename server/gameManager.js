@@ -17,12 +17,14 @@ function nextMoveAt() {
   return d.toISOString();
 }
 
-// 리그 매칭 쌍 (한중일 라운드로빈)
-// 각 쌍은 교대로 흑/백 배정
+// 리그 매칭 쌍 (한중일미 라운드로빈 6경기)
 const LEAGUE_PAIRS = [
   { black: 'KR', white: 'JP' },
   { black: 'CN', white: 'KR' },
   { black: 'JP', white: 'CN' },
+  { black: 'US', white: 'KR' },
+  { black: 'CN', white: 'US' },
+  { black: 'JP', white: 'US' },
 ];
 
 // 활성 게임이 없는 쌍에 새 게임 생성
@@ -31,8 +33,8 @@ function initLeagueGames() {
   const activePairs = new Set(activeGames.map(g => `${g.black_code}-${g.white_code}`));
 
   const insertGame = db.prepare(`
-    INSERT INTO games (black_code, white_code, board_state, next_move_at, current_turn, sgf)
-    VALUES (?, ?, ?, ?, 'black', '')
+    INSERT INTO games (black_code, white_code, board_state, prev_board_state, next_move_at, current_turn, sgf)
+    VALUES (?, ?, ?, NULL, ?, 'black', '')
   `);
 
   for (const { black, white } of LEAGUE_PAIRS) {
@@ -61,13 +63,9 @@ function processTurn(game) {
     LIMIT 10
   `).all(game.id, game.move_number, votingCountry);
 
-  // 이전 보드 (Ko 체크용)
-  const prevMove = db.prepare(`
-    SELECT * FROM moves WHERE game_id = ? AND move_number = ? - 2 LIMIT 1
-  `).get(game.id, game.move_number);
-
-  // 이전 보드 상태 재구성은 간략화: 현재는 Ko 체크 생략 (추후 개선)
-  const resolved = resolveBestMove(voteCounts, board, color, null);
+  // Ko 체크용: 2수 전 보드 상태
+  const prevBoardArr = game.prev_board_state ? JSON.parse(game.prev_board_state) : null;
+  const resolved = resolveBestMove(voteCounts, board, color, prevBoardArr);
 
   let newBoard = board;
   let captured = 0;
@@ -108,12 +106,13 @@ function processTurn(game) {
   const newSGF = game.sgf + sgfMove;
 
   if (bothPassed) {
-    // 게임 종료 처리
     finishGame(game, newBoard, newSGF, newPrisoners);
+    return { resolved, captured, newBoard, newMoveNo, finished: true };
   } else {
     db.prepare(`
       UPDATE games SET
         board_state = ?,
+        prev_board_state = ?,
         current_turn = ?,
         move_number = ?,
         prisoners_black = ?,
@@ -123,6 +122,7 @@ function processTurn(game) {
       WHERE id = ?
     `).run(
       JSON.stringify(newBoard),
+      game.board_state,   // 현재 보드가 다음 차례의 "2수 전" 보드가 됨
       newTurn,
       newMoveNo,
       newPrisoners.black,
@@ -133,12 +133,16 @@ function processTurn(game) {
     );
   }
 
-  return { resolved, captured, newBoard, newMoveNo };
+  return { resolved, captured, newBoard, newMoveNo, finished: false };
 }
+
+// onFinish 콜백: 종료 이벤트를 index.js로 전달
+let _onFinishCallback = null;
+function setOnFinishCallback(fn) { _onFinishCallback = fn; }
 
 function finishGame(game, finalBoard, sgf, prisoners) {
   const { blackScore, whiteScore } = scoreBoard(finalBoard);
-  const blackTotal = blackScore - prisoners.white; // 상대가 따낸 돌 차감
+  const blackTotal = blackScore - prisoners.white;
   const whiteTotal = whiteScore - prisoners.black;
 
   let winnerCode = null;
@@ -152,28 +156,37 @@ function finishGame(game, finalBoard, sgf, prisoners) {
     loserCode = game.black_code;
   }
 
-  // 게임 완료 업데이트
   db.prepare(`
     UPDATE games SET status = 'finished', winner_code = ?, ended_at = datetime('now'), sgf = ?
     WHERE id = ?
   `).run(winnerCode, sgf, game.id);
 
-  // ELO 갱신
   if (winnerCode && loserCode) {
     const winner = db.prepare(`SELECT elo FROM countries WHERE code = ?`).get(winnerCode);
-    const loser = db.prepare(`SELECT elo FROM countries WHERE code = ?`).get(loserCode);
+    const loser  = db.prepare(`SELECT elo FROM countries WHERE code = ?`).get(loserCode);
     const { winnerGain, loserLoss } = calcElo(winner.elo, loser.elo);
-
     db.prepare(`UPDATE countries SET elo = elo + ? WHERE code = ?`).run(winnerGain, winnerCode);
     db.prepare(`UPDATE countries SET elo = elo - ? WHERE code = ?`).run(loserLoss, loserCode);
   }
 
-  // 상대전적 갱신
   updateHeadToHead(game.black_code, game.white_code, winnerCode);
 
-  console.log(`[Game] 게임 종료 #${game.id}: 흑${blackTotal.toFixed(1)} vs 백${whiteTotal.toFixed(1)}, 승자: ${winnerCode || '무승부'}`);
+  const margin = Math.abs(blackTotal - whiteTotal).toFixed(1);
+  console.log(`[Game] 종료 #${game.id}: 흑${blackTotal.toFixed(1)} 백${whiteTotal.toFixed(1)}, 승자: ${winnerCode || '무승부'} (${margin}집 차)`);
 
-  // 새 게임 예약
+  // 종료 이벤트 콜백
+  if (_onFinishCallback) {
+    _onFinishCallback({
+      gameId: game.id,
+      blackCode: game.black_code,
+      whiteCode: game.white_code,
+      winnerCode,
+      blackScore: blackTotal,
+      whiteScore: whiteTotal,
+      margin: Number(margin),
+    });
+  }
+
   setTimeout(initLeagueGames, 5000);
 }
 
@@ -275,6 +288,7 @@ function getGameHistory(limit = 20, offset = 0) {
 module.exports = {
   initLeagueGames,
   processDueTurns,
+  setOnFinishCallback,
   getGameState,
   getStandings,
   getActiveGames,

@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // 지원 국가 (한중일)
-const SUPPORTED = new Set(['KR', 'CN', 'JP']);
+const SUPPORTED = new Set(['KR', 'CN', 'JP', 'US']);
 
 // 개발/테스트용 오버라이드 (쿼리스트링 ?country=KR)
 function getCountryFromQuery(req) {
