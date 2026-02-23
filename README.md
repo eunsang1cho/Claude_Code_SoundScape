@@ -1,52 +1,39 @@
-# 🌏 국가대항전 바둑
+# SoundScape
 
-한국 · 중국 · 일본이 IP 기반으로 팀을 이루어 10분마다 바둑 한 수씩 두는 국가대항전 플랫폼.
+시각장애인을 위한 공간 청각화 보조 시스템.
+깊이 정보를 3차원 오디오 신호로 변환하여 청각만으로 주변 공간을 인지할 수 있도록 합니다.
 
-## 실행 방법
+## 개념
 
-```bash
-npm install
-npm start        # 프로덕션
-npm run dev      # 개발 (nodemon)
-```
-
-서버: http://localhost:3000
-
-## 개발 테스트 (IP 오버라이드)
-
-```
-http://localhost:3000?country=KR   # 한국으로 접속
-http://localhost:3000?country=CN   # 중국으로 접속
-http://localhost:3000?country=JP   # 일본으로 접속
-```
+- **X축 (좌우)** → 시간 sweep (왼쪽→오른쪽 스캔)
+- **Y축 (높이)** → 피치 (높은 위치 = 고음)
+- **Z축 (거리)** → 볼륨 + 리버브 (가까울수록 크고 선명하게)
 
 ## 기술 스택
 
-- **Backend**: Node.js + Express + WebSocket (ws) + node-cron
-- **Database**: SQLite (better-sqlite3)
-- **Frontend**: Vanilla HTML/CSS/JavaScript + Canvas API
-- **IP 판별**: ip-api.com
-- **ELO 레이팅**: 표준 ELO (K=32)
+- **입력**: Depth Camera (Intel RealSense) / Webcam + MiDaS AI 깊이 추정
+- **출력**: 골전도 헤드폰 (귀 개방형) + HRTF 기반 3D 공간 음향
+- **언어**: Python (`sounddevice`, `numpy`, `opencv-python`)
 
 ## 구조
 
 ```
-server/
-  index.js        # Express 서버 + WebSocket + Cron
-  db.js           # SQLite 스키마 및 초기화
-  goEngine.js     # 바둑 룰 엔진 (착수, 따냄, Ko, 집 계산)
-  geoip.js        # IP → 국가 코드 판별
-  gameManager.js  # 게임 로직, ELO, 상대전적
-public/
-  index.html
-  css/style.css
-  js/app.js       # Canvas 바둑판 + WebSocket + UI
+echolocation/
+  depth_source.py   # 깊이 데이터 소스 (시뮬레이션 / 웹캠 / RealSense)
+  sonifier.py       # 깊이맵 → 오디오 변환 엔진
+  main.py           # 메인 실행 루프
+requirements.txt
 ```
 
-## 게임 규칙
+## 실행
 
-- 19x19 바둑판, 덤 6.5집
-- 10분마다 해당 국가 투표 중 최다 득표 좌표에 착수
-- IP당 1표 (중복 투표 시 덮어씀)
-- 연속 2패스 시 집 계산 후 종료
-- 승패에 따라 ELO 레이팅 갱신
+```bash
+pip install -r requirements.txt
+python echolocation/main.py
+```
+
+## 참고 자료
+
+- [The vOICe](https://www.seeingwithsound.com/) - 시각-청각 변환 선행 연구
+- HRTF (Head-Related Transfer Function) 기반 공간 음향
+- Sensory Substitution 분야 연구
