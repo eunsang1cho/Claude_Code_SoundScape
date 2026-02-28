@@ -8,6 +8,7 @@ var _player: CharacterBody3D
 var _echo: Node3D
 var _audio: Node
 var _heatmap: Node2D
+var _settings: Control
 
 func _ready():
 	_build_world()
@@ -98,6 +99,12 @@ func _build_hud():
 	_heatmap.set_script(load("res://scripts/heatmap_overlay.gd"))
 	canvas.add_child(_heatmap)
 
+	_settings = Control.new()
+	_settings.name = "Settings"
+	_settings.set_script(load("res://scripts/settings_overlay.gd"))
+	_settings.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(_settings)
+
 # ── 시그널 연결 ───────────────────────────────
 func _wire_signals():
 	# _echo, _audio, _heatmap 는 _ready 이후에 접근 가능
@@ -106,6 +113,17 @@ func _wire_signals():
 func _connect_after_ready():
 	_echo.depth_updated.connect(_audio.on_depth_updated)
 	_echo.depth_updated.connect(_heatmap.on_depth_updated)
+
+	# 파라미터 변경 → 오디오·에코·히트맵 동시 반영
+	_settings.params_changed.connect(_audio.set_params)
+	_settings.params_changed.connect(_echo.set_params)
+	_settings.params_changed.connect(_heatmap.set_params)
+
+	# 시작 시 기본값 적용
+	var init_params := _settings.get_current_params()
+	_audio.set_params(init_params)
+	_echo.set_params(init_params)
+	_heatmap.set_params(init_params)
 
 func _input(event):
 	if event.is_action_pressed("ui_cancel"):

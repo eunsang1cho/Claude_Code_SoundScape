@@ -5,7 +5,7 @@ extends Node2D
 # H 키로 on/off 토글
 # ─────────────────────────────────────────────
 
-const MAX_DIST  := 5.0
+var max_dist    := 5.0
 const CELL_W    := 55
 const CELL_H    := 44
 const OFFSET    := Vector2(12, 12)
@@ -13,6 +13,11 @@ const FONT_SIZE := 11
 
 var _grid: Array = []
 var _visible_heatmap: bool = true
+
+func set_params(params: Dictionary) -> void:
+	if params.has("max_dist"):
+		max_dist = params["max_dist"]
+		queue_redraw()
 
 func _ready():
 	# CanvasLayer 최상단에 표시
@@ -45,7 +50,7 @@ func _draw():
 	for r in range(rows):
 		for c in range(cols):
 			var dist: float = _grid[r][c]
-			var t: float = clamp(dist / MAX_DIST, 0.0, 1.0)
+			var t: float = clamp(dist / max_dist, 0.0, 1.0)
 			var color: Color = _dist_to_color(t)
 			var rect := Rect2(
 				OFFSET + Vector2(c * CELL_W, r * CELL_H),
