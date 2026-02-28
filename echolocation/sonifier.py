@@ -2,22 +2,18 @@
 sonifier.py - 깊이 맵 → 공간 음향 변환 엔진
 
 3축 매핑 원칙:
-  X축 (시간)   : 레이더처럼 왼쪽→오른쪽으로 훑는 스캔 속도
-  Y축 (피치)   : 화면 위쪽(높은 위치) = 높은 음, 아래쪽 = 낮은 음
-  Z축 (볼륨)   : 가까운 물체 = 크게, 먼 물체 = 작게
-  보너스 (패닝): 스캔 위치의 좌/우를 스테레오로 표현
+  X축 (패닝)  : 화면 왼쪽 → 왼쪽 스피커, 오른쪽 → 오른쪽 스피커
+  Y축 (피치)  : 화면 위쪽(높은 위치) = 높은 음, 아래쪽 = 낮은 음
+  Z축 (볼륨)  : 가까운 물체 = 크게, 먼 물체 = 작게
 
-음향 생성:
-  - 사인파 합성 (additive synthesis)
-  - 높이축을 N개 밴드로 분할, 각 밴드마다 고유 주파수
-  - 해당 밴드에서 가장 가까운 픽셀의 거리로 볼륨 계산
-  - 부드러운 볼륨 변화를 위한 지수 평활(exponential smoothing)
+히트맵 기반 처리:
+  - 전체 깊이 맵을 한 프레임에 동시에 처리 (스윕 없음)
+  - 각 셀(열×행)이 X패닝+Y피치+Z볼륨으로 직접 기여
+  - 왼쪽/오른쪽 장애물이 각각 L/R 채널에 독립적으로 반영
 """
 
 import numpy as np
 import threading
-import time
-from typing import List, Tuple
 
 
 # ──────────────────────────────────────────────
@@ -53,13 +49,13 @@ BAND_FREQS = _log_freqs(NUM_BANDS, MIN_FREQ, MAX_FREQ)  # [저 → 고]
 
 class Sonifier:
     """
-    깊이 맵 한 열(column)을 받아 실시간 오디오를 생성한다.
+    깊이 맵 전체를 받아 히트맵 기반 3D 스테레오 오디오를 생성한다.
 
     사용법:
         sonifier = Sonifier()
         sonifier.start()
         ...
-        sonifier.update_column(depth_col, pan=-0.5)  # 스캔 루프에서 호출
+        sonifier.update_frame(depth_map)  # 프레임 루프에서 호출
         ...
         sonifier.stop()
     """
@@ -67,10 +63,11 @@ class Sonifier:
     def __init__(self):
         self._lock = threading.Lock()
 
-        # 현재 재생 중인 밴드별 상태
-        self._target_vol  = np.zeros(NUM_BANDS, dtype=np.float64)
-        self._smooth_vol  = np.zeros(NUM_BANDS, dtype=np.float64)
-        self._pan         = 0.0   # -1(완전 왼쪽) ~ +1(완전 오른쪽)
+        # 밴드별 L/R 독립 진폭 (히트맵 기반)
+        self._target_L = np.zeros(NUM_BANDS, dtype=np.float64)
+        self._target_R = np.zeros(NUM_BANDS, dtype=np.float64)
+        self._smooth_L = np.zeros(NUM_BANDS, dtype=np.float64)
+        self._smooth_R = np.zeros(NUM_BANDS, dtype=np.float64)
 
         # 위상 추적 (연속 사인파 생성용)
         self._phases = np.zeros(NUM_BANDS, dtype=np.float64)
@@ -105,47 +102,57 @@ class Sonifier:
             self._stream.close()
             self._stream = None
 
-    def update_column(self, depth_col: np.ndarray, pan: float):
+    def update_frame(self, depth_map: np.ndarray):
         """
-        스캐너가 새 열을 읽을 때마다 호출.
+        전체 깊이 맵을 한 번에 받아 히트맵 기반으로 L/R 진폭 갱신.
 
         Args:
-            depth_col: 1D 배열, shape=(height,), 값 0(가까움)~1(멀음)
-                       인덱스 0 = 화면 상단 → 높은 피치
-            pan:       -1.0(좌) ~ +1.0(우), 현재 스캔 위치
+            depth_map: 2D 배열, shape=(height, width), 값 0(가까움)~1(멀음)
+                       행 0 = 화면 상단 → 높은 피치
+                       열 0 = 화면 좌측 → 왼쪽 패닝
         """
-        h = len(depth_col)
-        target = np.zeros(NUM_BANDS, dtype=np.float64)
+        h, w = depth_map.shape
+        target_L = np.zeros(NUM_BANDS, dtype=np.float64)
+        target_R = np.zeros(NUM_BANDS, dtype=np.float64)
 
         band_edges = np.linspace(0, h, NUM_BANDS + 1, dtype=int)
 
-        for i in range(NUM_BANDS):
-            # 밴드 i는 화면 위에서 i번째 → 높은 인덱스 i = 화면 하단
-            # BAND_FREQS[0] = 저음 → 아래쪽에 배치
-            # 따라서 배열을 뒤집어서 매핑: band i (위) ↔ BAND_FREQS[NUM_BANDS-1-i] (고음)
-            row_start = band_edges[i]
-            row_end   = band_edges[i + 1]
+        # 열 위치 → 패닝 (-1:좌 ~ +1:우)
+        col_pans = np.linspace(-1.0, 1.0, w)
+        pan_rad  = (col_pans + 1.0) * 0.5 * np.pi / 2.0
+        gains_L  = np.cos(pan_rad)   # (width,)
+        gains_R  = np.sin(pan_rad)   # (width,)
+
+        for b in range(NUM_BANDS):
+            row_start = band_edges[b]
+            row_end   = band_edges[b + 1]
             if row_end <= row_start:
                 continue
 
-            band_depths = depth_col[row_start:row_end]
-            min_depth   = float(np.min(band_depths))
+            # 이 밴드의 행 슬라이스: shape=(band_h, width)
+            band_slice = depth_map[row_start:row_end, :]
 
-            if min_depth >= FAR_DIST:
-                vol = 0.0
-            else:
-                # 거리 → 볼륨: 가까울수록 크게 (역수 매핑)
-                clamped = max(min_depth, NEAR_DIST)
-                vol = (FAR_DIST - clamped) / (FAR_DIST - NEAR_DIST)
-                vol = vol ** 1.5   # 지수 강조 (중간 거리 대비 향상)
+            # 각 열에서 가장 가까운 픽셀 깊이
+            col_depths = np.min(band_slice, axis=0)   # (width,)
 
-            # 위에서 i번째 밴드 = 고음(NUM_BANDS-1-i 인덱스 주파수)
-            freq_idx = NUM_BANDS - 1 - i
-            target[freq_idx] = vol
+            # 거리 → 볼륨 (가까울수록 크게)
+            clamped = np.clip(col_depths, NEAR_DIST, FAR_DIST)
+            vols    = np.where(
+                col_depths >= FAR_DIST,
+                0.0,
+                ((FAR_DIST - clamped) / (FAR_DIST - NEAR_DIST)) ** 1.5
+            )
+
+            # 위에서 b번째 밴드 = 고음 (주파수 인덱스 뒤집기)
+            freq_idx = NUM_BANDS - 1 - b
+
+            # 각 열의 기여를 L/R 채널에 합산
+            target_L[freq_idx] = float(np.sum(vols * gains_L)) / w
+            target_R[freq_idx] = float(np.sum(vols * gains_R)) / w
 
         with self._lock:
-            self._target_vol = target
-            self._pan = float(np.clip(pan, -1.0, 1.0))
+            self._target_L = target_L
+            self._target_R = target_R
 
     # ── 내부 오디오 콜백 ─────────────────────────
 
@@ -155,23 +162,19 @@ class Sonifier:
         right = np.zeros(frames, dtype=np.float64)
 
         with self._lock:
-            target = self._target_vol.copy()
-            pan    = self._pan
-
-        # 스테레오 패닝 계수 (constant-power panning)
-        pan_rad  = (pan + 1) * 0.5 * np.pi / 2   # 0 ~ π/2
-        gain_l   = np.cos(pan_rad)
-        gain_r   = np.sin(pan_rad)
+            target_L = self._target_L.copy()
+            target_R = self._target_R.copy()
 
         t = np.arange(frames, dtype=np.float64) / SAMPLE_RATE
 
         for i in range(NUM_BANDS):
             # 지수 평활로 클릭 잡음(pop) 방지
-            self._smooth_vol[i] += SMOOTH_ALPHA * (target[i] - self._smooth_vol[i])
-            vol = self._smooth_vol[i]
+            self._smooth_L[i] += SMOOTH_ALPHA * (target_L[i] - self._smooth_L[i])
+            self._smooth_R[i] += SMOOTH_ALPHA * (target_R[i] - self._smooth_R[i])
+            vol_L = self._smooth_L[i]
+            vol_R = self._smooth_R[i]
 
-            if vol < 1e-4:
-                # 위상은 계속 진행시켜야 나중에 다시 켜질 때 클릭 없음
+            if vol_L < 1e-4 and vol_R < 1e-4:
                 self._phases[i] += 2 * np.pi * BAND_FREQS[i] * frames / SAMPLE_RATE
                 self._phases[i] %= 2 * np.pi
                 continue
@@ -179,14 +182,12 @@ class Sonifier:
             # 사인파 생성 (위상 연속)
             phase0 = self._phases[i]
             wave = np.sin(2 * np.pi * BAND_FREQS[i] * t + phase0)
-
-            # 위상 업데이트
             self._phases[i] = (phase0 + 2 * np.pi * BAND_FREQS[i] * frames / SAMPLE_RATE) \
                                % (2 * np.pi)
 
-            amplitude = vol * MAX_AMPLITUDE / NUM_BANDS
-            left  += wave * amplitude * gain_l
-            right += wave * amplitude * gain_r
+            amp   = MAX_AMPLITUDE / NUM_BANDS
+            left  += wave * vol_L * amp
+            right += wave * vol_R * amp
 
         # 소프트 클리핑 (tanh)
         outdata[:, 0] = np.tanh(left).astype(np.float32)
