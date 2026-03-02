@@ -4,3 +4,5 @@ data/*.db-shm
 data/*.db-wal
 .env
 *.log
+venv/
+venv_SoundScape/
