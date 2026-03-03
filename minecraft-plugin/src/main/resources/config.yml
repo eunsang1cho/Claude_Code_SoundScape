@@ -1,0 +1,29 @@
+# SoundScape 마인크래프트 플러그인 설정
+
+# 스캔 그리드 크기 (원본 SoundScape 7×5 구성)
+grid:
+  cols: 7          # 수평 칼럼 수 (홀수 권장, 중앙이 정면)
+  rows: 5          # 수직 행 수
+
+# 시야각 (도)
+fov:
+  horizontal: 60.0  # 수평 시야각 (-30° ~ +30°)
+  vertical: 40.0    # 수직 시야각 (위 12° ~ 아래 20°)
+
+# 거리 설정 (블록 단위)
+max_distance: 12.0  # 이 거리 이상은 감지 안 함
+
+# 오디오 설정
+audio:
+  sound: BLOCK_NOTE_BLOCK_HARP   # 사용할 사운드 (Bukkit Sound enum 이름)
+  near_dist: 1.0    # 이 거리 이하 = 최대 볼륨
+  far_ratio: 0.85   # max_distance * 이 비율 이상 = 무음
+  min_pitch: 0.5    # 최저 피치 (바닥, Row 맨 아래)
+  max_pitch: 2.0    # 최고 피치 (천장, Row 맨 위)
+  max_volume: 1.0   # 최대 볼륨
+
+# 스캔 주기 (초) - 낮을수록 실시간이지만 서버 부하 증가
+update_interval_seconds: 0.2
+
+# 기본값으로 활성화 여부
+enabled_by_default: false

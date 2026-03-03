@@ -1,0 +1,24 @@
+name: SoundScape
+version: '${version}'
+main: com.soundscape.SoundScapePlugin
+api-version: '1.20'
+description: >
+  시각장애인을 위한 마인크래프트 공간 청각화 플러그인.
+  플레이어 주변 블록을 레이캐스트로 스캔하여 3D 위치 사운드로 변환합니다.
+  X(좌우)=스테레오 패닝, Y(높이)=피치, Z(거리)=볼륨
+
+authors: [SoundScape Team]
+
+commands:
+  soundscape:
+    description: SoundScape 플러그인 명령어
+    usage: /soundscape <toggle|range|help>
+    aliases: [ss]
+
+permissions:
+  soundscape.use:
+    description: SoundScape 기능 사용
+    default: true
+  soundscape.admin:
+    description: SoundScape 관리자 명령어
+    default: op
