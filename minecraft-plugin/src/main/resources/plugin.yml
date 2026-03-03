@@ -12,7 +12,7 @@ authors: [SoundScape Team]
 commands:
   soundscape:
     description: SoundScape 플러그인 명령어
-    usage: /soundscape <toggle|range|help>
+    usage: /soundscape <toggle|type1|type2|type3|range|help>
     aliases: [ss]
 
 permissions:

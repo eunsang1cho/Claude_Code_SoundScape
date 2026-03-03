@@ -1,5 +1,6 @@
 package com.soundscape;
 
+import com.soundscape.audio.ScanType;
 import com.soundscape.audio.SpatialAudioEngine;
 import com.soundscape.command.SoundScapeCommand;
 import com.soundscape.listener.PlayerListener;
@@ -10,8 +11,10 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * SoundScapePlugin - 마인크래프트용 공간 청각화 플러그인
@@ -23,6 +26,11 @@ import java.util.UUID;
  *
  * 핵심 차이점: 카메라 깊이 맵 대신 RayTrace로 블록을 탐지하므로
  * 마인크래프트의 클라이언트 OpenAL이 진짜 3D 위치 음향을 처리함.
+ *
+ * 청각화 모드 (ScanType):
+ *   type1 = FULL    : 7×5 전체 그리드 (기본, 가장 상세)
+ *   type2 = COLUMN  : 열별 최근접 블록 (수평 스윕)
+ *   type3 = NEAREST : 전체 최근접 블록 1개 (위험 감지)
  */
 public class SoundScapePlugin extends JavaPlugin {
 
@@ -31,6 +39,9 @@ public class SoundScapePlugin extends JavaPlugin {
 
     // 활성화된 플레이어 UUID 집합 (thread-safe)
     private final Set<UUID> enabledPlayers = Collections.synchronizedSet(new HashSet<>());
+
+    // 플레이어별 청각화 모드 (기본값: FULL)
+    private final Map<UUID, ScanType> playerTypes = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -45,11 +56,10 @@ public class SoundScapePlugin extends JavaPlugin {
         getCommand("soundscape").setExecutor(cmd);
         getCommand("soundscape").setTabCompleter(cmd);
 
-        // 기본 활성화 여부 확인 후 로그인 플레이어에 적용
         startScanLoop();
 
         getLogger().info("SoundScape 플러그인이 활성화되었습니다.");
-        getLogger().info("  /soundscape toggle 로 공간 청각화 ON/OFF");
+        getLogger().info("  /ss toggle 로 ON/OFF  |  /ss type1~3 으로 모드 전환");
     }
 
     @Override
@@ -69,9 +79,9 @@ public class SoundScapePlugin extends JavaPlugin {
                 for (Player player : getServer().getOnlinePlayers()) {
                     if (!enabledPlayers.contains(player.getUniqueId())) continue;
 
-                    // 스캔 및 오디오 재생 (메인 스레드에서 실행되므로 안전)
+                    ScanType type = getPlayerType(player);
                     double[][] depthGrid = scanner.scan(player);
-                    audioEngine.play(player, depthGrid);
+                    audioEngine.play(player, depthGrid, type);
                 }
             }
         }.runTaskTimer(this, 20L, intervalTicks);
@@ -97,6 +107,16 @@ public class SoundScapePlugin extends JavaPlugin {
             enabledPlayers.add(uid);
             return true;
         }
+    }
+
+    /** 플레이어의 현재 청각화 모드 반환 (기본값: FULL) */
+    public ScanType getPlayerType(Player player) {
+        return playerTypes.getOrDefault(player.getUniqueId(), ScanType.FULL);
+    }
+
+    /** 플레이어의 청각화 모드 설정 */
+    public void setPlayerType(Player player, ScanType type) {
+        playerTypes.put(player.getUniqueId(), type);
     }
 
     public Set<UUID> getEnabledPlayers() { return enabledPlayers; }
