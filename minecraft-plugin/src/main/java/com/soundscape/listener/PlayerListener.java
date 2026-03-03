@@ -8,7 +8,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 /**
  * 플레이어 이벤트 리스너
  *
- * 서버 퇴장 시 활성화 상태를 정리하여 메모리 누수를 방지합니다.
+ * 퇴장 시 enabledPlayers, playerTypes, playerGroundY를 모두 정리.
  */
 public class PlayerListener implements Listener {
 
@@ -20,7 +20,6 @@ public class PlayerListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        // 퇴장한 플레이어가 SoundScape를 켜 두었다면 집합에서 제거
-        plugin.getEnabledPlayers().remove(event.getPlayer().getUniqueId());
+        plugin.cleanupPlayer(event.getPlayer().getUniqueId());
     }
 }
