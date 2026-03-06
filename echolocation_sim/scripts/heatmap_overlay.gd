@@ -6,10 +6,10 @@ extends Node2D
 # ─────────────────────────────────────────────
 
 var max_dist    := 5.0
-const CELL_W    := 55
-const CELL_H    := 44
+const CELL_W    := 18
+const CELL_H    := 15
 const OFFSET    := Vector2(12, 12)
-const FONT_SIZE := 11
+const FONT_SIZE := 7
 
 var _grid: Array = []
 var _visible_heatmap: bool = true
@@ -57,15 +57,6 @@ func _draw():
 				Vector2(CELL_W - 2, CELL_H - 2)
 			)
 			draw_rect(rect, color)
-			# 거리 텍스트
-			var label := "%.1fm" % dist
-			draw_string(
-				ThemeDB.fallback_font,
-				rect.position + Vector2(4, CELL_H - 8),
-				label,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE,
-				Color(1, 1, 1, 0.9)
-			)
 
 	# 범례
 	_draw_legend(OFFSET + Vector2(0, rows * CELL_H + 6))

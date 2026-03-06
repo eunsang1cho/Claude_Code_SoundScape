@@ -16,11 +16,11 @@ signal params_changed(params: Dictionary)
 ## 연구 기반 기본값
 const DEFAULTS := {
 	"min_freq":    200.0,   # Hz  — 귀에 안전한 최저역 (PSVA: 250Hz)
-	"max_freq":   1600.0,   # Hz  — 장시간 사용 편의 상한 (vOICe는 5kHz이나 피로 큼)
+	"max_freq":    700.0,   # Hz  — 장시간 청취 피로 최소화 (고주파 감소)
 	"near_dist":    0.3,    # m   — 이 거리 이하 = 최대 볼륨 (보행 안전 기준)
 	"max_dist":     5.0,    # m   — 이 거리 이상 = 무음 (실내 복도 기준)
 	"smooth":       0.35,   # 0~1 — 5 FPS 갱신 주기 기준 부드러운 전환
-	"volume":       0.80,   # 0~1 — 마스터 볼륨
+	"volume":       0.55,   # 0~1 — 마스터 볼륨 (피로 감소)
 	"update_fps":   5.0,    # FPS — 깊이 스캔 주기 (지연·음질 균형점)
 }
 
