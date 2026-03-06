@@ -1,20 +1,26 @@
 extends Node
 # ─────────────────────────────────────────────
-# audio_feedback.gd  — 3가지 실시간 전환 가능 에코로케이션 오디오 모드
+# audio_feedback.gd  — 4가지 실시간 전환 가능 에코로케이션 오디오 모드
 #
 # [1] 동시재생  : 전 열을 한 프레임에 합산, ITD+공기흡수+sqrt 압축
 # [2] vOICe 스캔: L→R 순차 열 스캔, 열 위치 = 시간 → 뇌가 공간 디코딩
 # [3] 거리→버즈 : 진폭 변조 속도가 거리를 인코딩 (가까울수록 빠른 진동)
+# [4] 그레인 배음: 거리→음색(배음 풍부도), 밝기→트레몰로, 중심와 Gaussian 가중치
 #
 # 연구 기반:
 #   Woodworth (1954) ITD, Capelle (1998) PSVA sqrt압축
 #   Meijer (1992) vOICe 순차스캔, Thaler (2011) 최적 에코 반복률
+#   Roads (2001) Granular Synthesis, Blauert (1997) 청각 공간화
 # ─────────────────────────────────────────────
 
 ## 오디오 모드
 const MODE_SIMULTANEOUS := 0  ## [1] 동시재생 (기존 방식 + ITD)
 const MODE_SEQUENTIAL   := 1  ## [2] vOICe 순차스캔 L→R
 const MODE_AM_DISTANCE  := 2  ## [3] 거리 → 버즈 속도
+const MODE_GRANULAR     := 3  ## [4] 그레인 배음 질감 합성
+
+## 중심와 효과: 정면 ±34° ≈ ±2열, σ=1.5열 Gaussian
+const FOVEA_SIGMA := 1.5
 
 var sound_mode: int = MODE_SIMULTANEOUS
 
@@ -70,6 +76,14 @@ var _col_amp   : Array = []   # [col][band]: PackedFloat64Array
 var _am_phases := PackedFloat64Array()
 var _am_rates  := PackedFloat64Array()  # Hz per band (가까울수록 ↑)
 
+## [4] 그레인 배음 질감 합성
+var _harmonic_richness := PackedFloat64Array()  # 0=순수사인, 1=배음풍부 (거리 역수)
+var _tremolo_phases    := PackedFloat64Array()  # 밴드별 트레몰로 위상
+var _tremolo_rates     := PackedFloat64Array()  # 밴드별 트레몰로 Hz (salience → 0.5~8Hz)
+var _grain_phases_4    := PackedFloat64Array()  # 밴드별 그레인 엔벨로프 위상
+var _grain_durations   := PackedFloat64Array()  # 밴드별 그레인 길이(초): 가까울수록 짧음
+var _focus_boost       : float = 1.0            # 정면 중앙 장애물 감지 시 배음 부스트
+
 # ─────────────────────────────────────────────
 func _ready():
 	var player := AudioStreamPlayer.new()
@@ -112,11 +126,21 @@ func _init_bands(num_bands: int) -> void:
 	_phases.resize(num_bands)
 	_am_phases.resize(num_bands)
 	_am_rates.resize(num_bands)
+	_harmonic_richness.resize(num_bands)
+	_tremolo_phases.resize(num_bands)
+	_tremolo_rates.resize(num_bands)
+	_grain_phases_4.resize(num_bands)
+	_grain_durations.resize(num_bands)
 	for i in range(num_bands):
 		_target_L[i] = 0.0;  _target_R[i] = 0.0
 		_smooth_L[i] = 0.0;  _smooth_R[i] = 0.0
 		_phases[i]   = 0.0
 		_am_phases[i] = 0.0; _am_rates[i] = 1.0
+		_harmonic_richness[i] = 0.0
+		_tremolo_phases[i]    = float(i) / float(max(num_bands, 1))  # 위상 분산
+		_tremolo_rates[i]     = 1.0
+		_grain_phases_4[i]    = float(i) / float(max(num_bands, 1))  # 밴드마다 위상 오프셋
+		_grain_durations[i]   = 0.04
 
 func _init_col_amp(cols: int) -> void:
 	_col_amp.clear()
@@ -272,6 +296,49 @@ func on_depth_updated(grid: Array) -> void:
 	_pulse_freq_dyn  = lerp(8.0, 0.8, t_min)   # 0.3m→8Hz, 5m→0.8Hz
 	_scan_period_dyn = lerp(0.08, 0.5, t_min)  # 0.3m→0.08s, 5m→0.5s
 
+	# ── [4] 그레인 배음 질감 합성 데이터 계산 ────────────────────────
+	# 중심와 Gaussian: 정면 ±2열(≈±34°)이 배음 계산에 지배적으로 기여
+	var center_col: float = float(cols - 1) / 2.0
+	# 동적 포커스 스파이크: 중앙 열(2,3,4)에 가까운 장애물이 있으면 부스트
+	var focus_sum  : float = 0.0
+	var focus_count: int   = 0
+	for fc in range(max(0, int(center_col) - 1), min(cols, int(center_col) + 2)):
+		for fr in range(rows):
+			var fd: float = audio_grid[fr][fc]
+			if fd >= 0.0 and fd < 2.0:   # 2m 이내 = 포커스 위험 영역
+				focus_sum += 1.0 - clamp((fd - near_dist) / (2.0 - near_dist), 0.0, 1.0)
+				focus_count += 1
+	# 포커스 부스트: 최대 2.5배 배음 강화 (중앙 장애물 "번쩍" 경고)
+	_focus_boost = lerp(1.0, 2.5, clamp(focus_sum / max(float(focus_count), 1.0), 0.0, 1.0)) if focus_count > 0 else 1.0
+
+	for b in range(_num_bands):
+		var r_idx: int = rows - 1 - b
+		if r_idx < 0 or r_idx >= rows:
+			continue
+		var sum_rich : float = 0.0
+		var sum_w    : float = 0.0
+		for c in range(cols):
+			# 중심와 Gaussian 가중치 (Roads 2001: 공간 밀도 차별화)
+			var fovea_w: float = exp(-0.5 * pow((c - center_col) / FOVEA_SIGMA, 2.0))
+			var dv: float = audio_grid[r_idx][c]
+			if dv < max_dist:
+				var d_abs : float = abs(dv)
+				var t_d   : float = clamp((d_abs - near_dist) / (max_dist - near_dist), 0.0, 1.0)
+				# 배음 풍부도: 가까울수록 1(날카로운 배음), 멀수록 0(순수 사인)
+				sum_rich += (1.0 - t_d) * fovea_w
+				sum_w    += fovea_w
+		var richness: float = sum_rich / max(sum_w, 0.001)
+		_harmonic_richness[b] = clamp(richness * _focus_boost, 0.0, 1.0)
+
+		# 트레몰로 속도: salience 높을수록 빠른 떨림 → 뇌의 주의 유도
+		_tremolo_rates[b] = lerp(0.5, 8.0, _harmonic_richness[b])
+
+		# 그레인 길이: 가까울수록 짧고 빽빽한 질감 (15ms~60ms)
+		# 가장 가까운 fovea 가중 거리를 그레인 밀도에 반영
+		var avg_d: float = (max_dist - sum_rich / max(sum_w, 0.001) * (max_dist - near_dist)) if sum_w > 0.0 else max_dist
+		var t_grain: float = clamp((avg_d - near_dist) / (max_dist - near_dist), 0.0, 1.0)
+		_grain_durations[b] = lerp(0.015, 0.06, t_grain)
+
 # ─────────────────────────────────────────────
 func _process(_delta: float):
 	if _playback == null or _num_bands == 0:
@@ -349,7 +416,43 @@ func _process(_delta: float):
 				_phases[b] += _get_freq(b) / SAMPLE_RATE
 				if _phases[b] >= 1.0: _phases[b] -= 1.0
 
-		# ── Woodworth ITD 링버퍼 ([1][3]에 적용, [2]는 스캔이 담당) ──
+		# ── [4] 그레인 배음 질감 합성 모드 ──────────────────────────
+		elif sound_mode == MODE_GRANULAR:
+			for b in range(_num_bands):
+				# 밴드별 그레인 엔벨로프 (Hanning 창: 0→1→0)
+				# 그레인 길이가 짧을수록 입자가 빽빽해짐 = 가까운 물체의 질감
+				_grain_phases_4[b] += 1.0 / (SAMPLE_RATE * max(_grain_durations[b], 0.001))
+				if _grain_phases_4[b] >= 1.0: _grain_phases_4[b] -= 1.0
+				var grain_env: float = sin(_grain_phases_4[b] * PI)
+
+				# 트레몰로: 중요한 물체일수록 빠른 떨림으로 뇌의 주의 유도
+				_tremolo_phases[b] += _tremolo_rates[b] / SAMPLE_RATE
+				if _tremolo_phases[b] >= 1.0: _tremolo_phases[b] -= 1.0
+				var tremolo: float = (1.0 + sin(_tremolo_phases[b] * TAU)) * 0.5
+
+				# 배음 합성: f + r*(2f*0.5 + 3f*0.33 + 4f*0.25 + 5f*0.20)
+				# 가까울수록 r→1: 밝고 날카로운 소리 (시각 히트맵 '빨강' 대응)
+				# 멀수록 r→0: 순수 사인 (시각 히트맵 '파랑' 대응)
+				var r: float = _harmonic_richness[b]
+				var s: float = sin(_phases[b] * TAU)
+				if r > 0.02:
+					s += r * (
+						sin(2.0 * _phases[b] * TAU) * 0.500 +
+						sin(3.0 * _phases[b] * TAU) * 0.333 +
+						sin(4.0 * _phases[b] * TAU) * 0.250 +
+						sin(5.0 * _phases[b] * TAU) * 0.200
+					)
+					# 정규화: 클리핑 방지 (배음 합산 최대 ≈ 2.283)
+					s /= (1.0 + r * (0.500 + 0.333 + 0.250 + 0.200))
+
+				s *= amp_scale * grain_env * tremolo
+				left  += s * _smooth_L[b]
+				right += s * _smooth_R[b]
+
+				_phases[b] += _get_freq(b) / SAMPLE_RATE
+				if _phases[b] >= 1.0: _phases[b] -= 1.0
+
+		# ── Woodworth ITD 링버퍼 ([1][3][4]에 적용, [2]는 스캔이 담당) ──
 		_itd_buf_L[_itd_write] = left
 		_itd_buf_R[_itd_write] = right
 

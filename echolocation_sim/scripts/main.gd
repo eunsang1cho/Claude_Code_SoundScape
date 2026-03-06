@@ -232,6 +232,7 @@ func _input(event: InputEvent):
 			KEY_1: _set_audio_mode(0)
 			KEY_2: _set_audio_mode(1)
 			KEY_3: _set_audio_mode(2)
+			KEY_4: _set_audio_mode(3)
 			KEY_R:
 				_player.position = Vector3(0, 1.0, 0)
 				_player.velocity = Vector3.ZERO
@@ -244,6 +245,7 @@ func _input(event: InputEvent):
 func _set_audio_mode(mode: int) -> void:
 	_audio.set_sound_mode(mode)
 	match mode:
-		0: _mode_label.text = "◉ [1] 동시재생   [2] vOICe 스캔   [3] 거리→버즈"
-		1: _mode_label.text = "  [1] 동시재생  ◉ [2] vOICe 스캔   [3] 거리→버즈"
-		2: _mode_label.text = "  [1] 동시재생   [2] vOICe 스캔  ◉ [3] 거리→버즈"
+		0: _mode_label.text = "◉ [1] 동시재생   [2] vOICe   [3] 버즈   [4] 그레인"
+		1: _mode_label.text = "  [1] 동시재생  ◉ [2] vOICe   [3] 버즈   [4] 그레인"
+		2: _mode_label.text = "  [1] 동시재생   [2] vOICe  ◉ [3] 버즈   [4] 그레인"
+		3: _mode_label.text = "  [1] 동시재생   [2] vOICe   [3] 버즈  ◉ [4] 그레인"
