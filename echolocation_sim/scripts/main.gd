@@ -24,89 +24,149 @@ func _process(_delta: float):
 		_player.velocity = Vector3.ZERO
 
 # ── 월드 ──────────────────────────────────────
+# 구역 배치 (50×50 맵, 원점=중앙):
+#   중앙 광장    : x=[-8, 8],  z=[-8, 6]
+#   집 (NE)      : x=[10,18],  z=[-22,-14]  (문: z=-14, x=[13,15.5])
+#   긴 골목길 (W): x=[-16,-13], z=[-22, 2]  (3m 폭 × 24m)
+#   계단+고가(S) : x=[-2, 2],   z=[7,23]    (올라가기 → 플랫폼 → 내려가기)
+#   구멍 (NE중간): x=[6,12],    z=[-12,-6]
 func _build_world():
-	# ── 바닥 (50×50, 구멍 2개 제외) ──────────
-	# 구멍1: x(6~12), z(-12~-6)  ← 북동
-	# 구멍2: x(-12~-6), z(6~12)  ← 남서
-	_add_box(Vector3(  0,  -0.1, -22.5), Vector3(50, 0.2,  5))   # 최북단 띠
-	_add_box(Vector3(  0,  -0.1,   0  ), Vector3(50, 0.2, 12))   # 중앙 띠
-	_add_box(Vector3(  0,  -0.1,  22.5), Vector3(50, 0.2,  5))   # 최남단 띠
-	_add_box(Vector3( -4.5,-0.1,  -9  ), Vector3(21, 0.2,  6))   # 북 좌측 (구멍1 서쪽)
-	_add_box(Vector3( 13.5,-0.1,  -9  ), Vector3(23, 0.2,  6))   # 북 우측 (구멍1 동쪽)
-	_add_box(Vector3(-13.5,-0.1,   9  ), Vector3(23, 0.2,  6))   # 남 좌측 (구멍2 서쪽)
-	_add_box(Vector3(  4.5,-0.1,   9  ), Vector3(21, 0.2,  6))   # 남 우측 (구멍2 동쪽)
-	_add_box(Vector3(  0,  -0.1, -17  ), Vector3(50, 0.2,  6))   # 북 중간 띠
-	_add_box(Vector3(  0,  -0.1,  17  ), Vector3(50, 0.2,  6))   # 남 중간 띠
+	_build_floor()
+	_build_outer_walls()
+	_build_house()
+	_build_alleyway()
+	_build_staircase()
+	_build_obstacles()
+	_build_lighting()
 
-	# ── 구멍 바닥 ──────────────────────────────
-	_add_box(Vector3(  9, -4.0,  -9), Vector3(6, 0.2, 6))
-	_add_box(Vector3( -9, -4.0,   9), Vector3(6, 0.2, 6))
+# ── 바닥: 50×50, 구멍 x=[6,12] z=[-12,-6] ───
+func _build_floor():
+	# 구멍을 피하는 4개 타일
+	_add_box(Vector3(  0,   -0.1, -18.5), Vector3(50, 0.2, 13))  # z<-12 전체
+	_add_box(Vector3(  0,   -0.1,   9.5), Vector3(50, 0.2, 31))  # z>-6  전체
+	_add_box(Vector3( -9.5, -0.1,  -9  ), Vector3(31, 0.2,  6))  # z=[-12,-6] x<6
+	_add_box(Vector3( 18.5, -0.1,  -9  ), Vector3(13, 0.2,  6))  # z=[-12,-6] x>12
+	# 구멍 바닥 (4m 아래)
+	_add_box(Vector3(  9,   -4.0,  -9  ), Vector3( 6, 0.2,  6))
 
-	# ── 외벽 (50×50) ────────────────────────
+# ── 외벽 (50×50) ─────────────────────────────
+func _build_outer_walls():
 	_add_box(Vector3(  0, 1.5, -25), Vector3(50, 3, 0.3))
 	_add_box(Vector3(  0, 1.5,  25), Vector3(50, 3, 0.3))
 	_add_box(Vector3(-25, 1.5,   0), Vector3(0.3, 3, 50))
 	_add_box(Vector3( 25, 1.5,   0), Vector3(0.3, 3, 50))
 
-	# ── 기존 박스 기둥 5개 ────────────────────
-	_add_box(Vector3( -6, 2.5,  -2), Vector3(0.5, 5.0, 0.5))
-	_add_box(Vector3(  7, 2.5,  -7), Vector3(0.4, 5.0, 0.4))
-	_add_box(Vector3(  3, 3.0,   8), Vector3(0.5, 6.0, 0.5))
-	_add_box(Vector3(-11, 2.0, -11), Vector3(0.8, 4.0, 0.8))
-	_add_box(Vector3( 11, 2.0,  11), Vector3(0.8, 4.0, 0.8))
+# ── 문 있는 집 (NE 구역) ──────────────────────
+# 외벽 8×8 (x=[10,18], z=[-22,-14]), 앞면 z=-14에 문(x=[13,15.5])
+# 내부 칸막이 z=-18, 통로 x=[12.5,14.5]
+func _build_house():
+	var wh := 3.0;  var wt := 0.3
+	# 후면 벽 (z=-22, 북)
+	_add_box(Vector3( 14,   wh/2, -22  ), Vector3(8.0, wh, wt))
+	# 좌측 벽 (x=10)
+	_add_box(Vector3( 10,   wh/2, -18  ), Vector3(wt,  wh, 8.0))
+	# 우측 벽 (x=18)
+	_add_box(Vector3( 18,   wh/2, -18  ), Vector3(wt,  wh, 8.0))
+	# 전면 벽 (z=-14, 남) — 문 x=[13,15.5] 폭 2.5m, 높이 2.5m
+	_add_box(Vector3( 11.5,  wh/2, -14 ), Vector3(3.0, wh,  wt))   # 문 왼쪽
+	_add_box(Vector3( 16.75, wh/2, -14 ), Vector3(2.5, wh,  wt))   # 문 오른쪽
+	_add_box(Vector3( 14.25, 2.75, -14 ), Vector3(2.5, 0.5, wt))   # 인방(lintel)
+	# 내부 칸막이 (z=-18), 통로 x=[12.5,14.5]
+	_add_box(Vector3( 11.25, wh/2, -18 ), Vector3(2.5, wh,  wt))   # 칸막이 좌
+	_add_box(Vector3( 16.25, wh/2, -18 ), Vector3(3.5, wh,  wt))   # 칸막이 우
+	# 내부 가구형 장애물 (소나 감지 연습)
+	_add_box(Vector3( 12.0,  0.5,  -20 ), Vector3(1.5, 1.0, 0.8))  # 방 뒤쪽 물체
+	_add_box(Vector3( 16.5,  0.75, -16 ), Vector3(0.4, 1.5, 0.4))  # 방 앞쪽 기둥
+	_add_box(Vector3( 14.0,  2.5,  -20 ), Vector3(2.0, 0.3, 1.5))  # 공중 선반
 
-	# ── 공중 부유 블록 5개 ──────────────────
-	_add_box(Vector3( -5,  3.2,  -7), Vector3(2.0, 0.8, 1.5))
-	_add_box(Vector3(  8,  2.8,   2), Vector3(1.5, 0.8, 2.0))
-	_add_box(Vector3( -7,  3.0,   5), Vector3(1.2, 1.2, 1.2))
-	_add_box(Vector3(  0,  2.75,-10), Vector3(3.5, 0.5, 1.0))
-	_add_box(Vector3( -2,  3.5,   3), Vector3(1.5, 0.5, 1.5))
+# ── 긴 골목길 (W 구역) ────────────────────────
+# 서벽 x=-16.15, 동벽 x=-12.85, 내부 폭 3m, 길이 24m (z=-22~2)
+# 북쪽 끝 막힘, 남쪽 끝 개방 (광장 연결)
+func _build_alleyway():
+	var wh := 3.0;  var wt := 0.3
+	var az_c := -10.0;  var a_len := 24.0
+	# 서쪽 벽 / 동쪽 벽
+	_add_box(Vector3(-16.15, wh/2, az_c), Vector3(wt, wh, a_len))
+	_add_box(Vector3(-12.85, wh/2, az_c), Vector3(wt, wh, a_len))
+	# 북쪽 막힌 끝 (z=-22)
+	_add_box(Vector3(-14.5,  wh/2, -22 ), Vector3(3.6, wh, wt))
+	# 골목 내 낮은 턱 (바닥 장애물)
+	_add_box(Vector3(-14.5,  0.15, -14 ), Vector3(3.0, 0.3, 0.4))
+	_add_box(Vector3(-14.5,  0.15,  -4 ), Vector3(3.0, 0.3, 0.4))
+	# 벽에서 돌출된 장벽 → 지그재그로 걸어야 함
+	_add_box(Vector3(-15.7,  1.5,   -9 ), Vector3(0.9, 3.0, 0.25))  # 서벽 돌출
+	_add_box(Vector3(-13.3,  1.5,   -6 ), Vector3(0.9, 3.0, 0.25))  # 동벽 돌출
 
-	# ── 일반 장애물 — 중앙 구역 ──────────────
-	_add_box(Vector3( 2,  0.75, -3), Vector3(0.6, 1.5, 0.6))
-	_add_box(Vector3(-3,  0.75,  1), Vector3(0.6, 1.5, 0.6))
-	_add_box(Vector3( 0,  0.75, -5), Vector3(3.0, 1.5, 0.3))
-	_add_box(Vector3(-4,  0.75, -4), Vector3(0.3, 1.5, 2.0))
-	_add_box(Vector3( 5,  0.75,  3), Vector3(0.3, 1.5, 2.0))
-	_add_box(Vector3( 0,  0.75,  5), Vector3(2.0, 1.5, 0.3))
+# ── 계단 + 고가 플랫폼 (S 구역) ───────────────
+# 올라가기: z=[7,11] (10계단 × 0.25m 높이 × 0.4m 깊이 = 2.5m)
+# 플랫폼:   z=[11,19], y=2.5m
+# 내려가기: z=[19,23]
+func _build_staircase():
+	var sw    := 4.0    # 계단 폭 (x: -2~+2)
+	var sh    := 0.25   # 한 계단 높이 (CharacterBody3D 기본 허용 범위)
+	var sd    := 0.4    # 한 계단 깊이
+	var ns    := 10     # 계단 수
+	var total := ns * sh        # 2.5m
+	var up_z0 := 7.0
+	var dn_z0 := 19.0
 
-	# ── 일반 장애물 — 구멍 주변 ──────────────
-	_add_box(Vector3( 4,  0.75, -8), Vector3(1.5, 1.5, 1.5))
-	_add_box(Vector3(13,  0.75, -4), Vector3(0.4, 1.5, 3.0))
-	_add_box(Vector3(-2,  0.75,-11), Vector3(4.0, 1.5, 0.4))
-	_add_box(Vector3(-4,  0.75,  8), Vector3(1.5, 1.5, 1.5))
-	_add_box(Vector3(-13, 0.75,  4), Vector3(0.4, 1.5, 3.0))
-	_add_box(Vector3( 2,  0.75, 11), Vector3(4.0, 1.5, 0.4))
+	# 올라가는 계단 (z 증가 → y 증가)
+	for i in range(ns):
+		var ch := (i + 1) * sh
+		_add_box(Vector3(0, ch / 2.0, up_z0 + i * sd + sd / 2.0), Vector3(sw, ch, sd))
 
-	# ── 일반 장애물 — 외곽 구역 ──────────────
-	_add_box(Vector3(-10, 0.75,-10), Vector3(2.0, 1.5, 0.5))
-	_add_box(Vector3( 10, 0.75, 10), Vector3(2.0, 1.5, 0.5))
-	_add_box(Vector3(-10, 0.75,  2), Vector3(0.5, 1.5, 4.0))
-	_add_box(Vector3( 10, 0.75, -2), Vector3(0.5, 1.5, 4.0))
+	# 고가 플랫폼 (y=2.5 위, z=11~19)
+	_add_box(Vector3(0, total + 0.1, 15.0), Vector3(sw + 2.0, 0.2, 8.0))
 
-	# ── 확장 구역 장애물 (50×50 신규) ────────
-	_add_box(Vector3( 18, 0.75,-18), Vector3(2.0, 1.5, 0.5))
-	_add_box(Vector3(-18, 0.75, 18), Vector3(2.0, 1.5, 0.5))
-	_add_box(Vector3( 18, 0.75, 18), Vector3(0.5, 1.5, 2.0))
-	_add_box(Vector3(-18, 0.75,-18), Vector3(0.5, 1.5, 2.0))
-	_add_box(Vector3(  0, 0.75,-20), Vector3(4.0, 1.5, 0.4))
-	_add_box(Vector3(  0, 0.75, 20), Vector3(4.0, 1.5, 0.4))
-	_add_box(Vector3(-20, 0.75,  0), Vector3(0.4, 1.5, 4.0))
-	_add_box(Vector3( 20, 0.75,  0), Vector3(0.4, 1.5, 4.0))
+	# 내려가는 계단 (z 증가 → y 감소)
+	for i in range(ns):
+		var ch := (ns - i) * sh
+		_add_box(Vector3(0, ch / 2.0, dn_z0 + i * sd + sd / 2.0), Vector3(sw, ch, sd))
 
-	# ── 원기둥 장애물 4개 ────────────────────
-	_add_cylinder(Vector3( -8, 1.5,   3), 0.5, 3.0)
-	_add_cylinder(Vector3( 12, 1.5, -10), 0.6, 4.0)
-	_add_cylinder(Vector3(-18, 1.5,  -8), 0.8, 4.0)
-	_add_cylinder(Vector3( 18, 1.5,  12), 0.7, 3.5)
+	# 계단 가이드 벽 (올라가는 쪽)
+	var gwh   := total + 0.6
+	var gz_up := up_z0 + float(ns) * sd / 2.0   # = 9.0
+	_add_box(Vector3(-2.4, gwh / 2.0, gz_up), Vector3(0.25, gwh, float(ns) * sd))
+	_add_box(Vector3( 2.4, gwh / 2.0, gz_up), Vector3(0.25, gwh, float(ns) * sd))
 
-	# ── 스파이크 기둥 4개 ────────────────────
-	_add_spike_pillar(Vector3(  5, 0.0, -15), 0.4, 3.0)
-	_add_spike_pillar(Vector3( -5, 0.0,  15), 0.4, 3.0)
-	_add_spike_pillar(Vector3( 15, 0.0,   5), 0.4, 3.0)
-	_add_spike_pillar(Vector3(-15, 0.0,  -5), 0.4, 3.0)
+	# 고가 플랫폼 난간
+	_add_box(Vector3(-3.3, total + 0.6, 15.0), Vector3(0.2, 1.0, 8.0))
+	_add_box(Vector3( 3.3, total + 0.6, 15.0), Vector3(0.2, 1.0, 8.0))
 
-	# ── 조명 ──────────────────────────────────
+	# 계단 가이드 벽 (내려가는 쪽)
+	var gz_dn := dn_z0 + float(ns) * sd / 2.0   # = 21.0
+	_add_box(Vector3(-2.4, gwh / 2.0, gz_dn), Vector3(0.25, gwh, float(ns) * sd))
+	_add_box(Vector3( 2.4, gwh / 2.0, gz_dn), Vector3(0.25, gwh, float(ns) * sd))
+
+	# 플랫폼 위 장애물 (소나 연습)
+	_add_box(Vector3(-1.0, total + 1.2, 13.5), Vector3(0.4, 2.4, 0.4))   # 기둥
+	_add_box(Vector3( 1.0, total + 1.2, 16.5), Vector3(0.4, 2.4, 0.4))   # 기둥
+	_add_box(Vector3( 0.0, total + 0.9, 15.0), Vector3(3.0, 0.3, 1.5))   # 공중 보
+
+# ── 개방 구역 장애물 (중앙 광장 + 외곽) ─────────
+func _build_obstacles():
+	# 중앙 광장
+	_add_cylinder(Vector3(-5, 1.5, -3), 0.4, 3.0)
+	_add_cylinder(Vector3( 5, 1.5,  3), 0.4, 3.0)
+	_add_box(Vector3( 0,  0.75, -4), Vector3(3.0, 1.5, 0.3))   # 수평 벽
+	_add_box(Vector3(-4,  0.75,  0), Vector3(0.3, 1.5, 3.0))   # 수직 벽
+	_add_box(Vector3( 4,  0.75,  4), Vector3(1.5, 1.5, 1.5))   # 큐브
+	# 구멍 주변 경고 마커
+	_add_box(Vector3( 4,  0.75, -7), Vector3(1.0, 1.5, 0.3))
+	_add_box(Vector3(14,  0.75,-11), Vector3(0.3, 1.5, 2.0))
+	# 외곽 장애물
+	_add_box(Vector3(-20, 0.75,-12), Vector3(2.0, 1.5, 0.5))
+	_add_box(Vector3( 20, 0.75, -5), Vector3(0.5, 1.5, 4.0))
+	_add_cylinder(Vector3(-18, 1.5, 8), 0.7, 3.5)
+	_add_cylinder(Vector3( 18, 1.5,-15), 0.6, 4.0)
+	_add_spike_pillar(Vector3(-5,  0.0, -17), 0.4, 3.0)
+	_add_spike_pillar(Vector3( 20, 0.0,  10), 0.4, 3.0)
+	# 공중 부유 블록 (소나 감지 연습)
+	_add_box(Vector3(-6, 3.0, -7), Vector3(2.0, 0.6, 1.5))
+	_add_box(Vector3( 8, 2.8,  2), Vector3(1.5, 0.6, 2.0))
+
+# ── 조명 ──────────────────────────────────────
+func _build_lighting():
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, 30, 0)
 	sun.light_energy = 1.2

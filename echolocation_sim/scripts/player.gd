@@ -11,6 +11,8 @@ const MOUSE_SENS     := 0.002
 
 func _ready():
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	floor_snap_length  = 0.3    # 계단 내려갈 때 바닥 스냅
+	floor_max_angle    = deg_to_rad(50)  # 기본 45° → 50°로 완화
 
 func _input(event: InputEvent):
 	if event is InputEventMouseMotion and \
