@@ -6,6 +6,7 @@ import com.soundscape.command.SoundScapeCommand;
 import com.soundscape.entity.EntityHit;
 import com.soundscape.entity.EntityScanner;
 import com.soundscape.listener.PlayerListener;
+import com.soundscape.listener.SonarPingListener;
 import com.soundscape.scanner.BlockScanner;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -57,6 +58,7 @@ public class SoundScapePlugin extends JavaPlugin {
         entityScanner = new EntityScanner(this);
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        getServer().getPluginManager().registerEvents(new SonarPingListener(this), this);
 
         SoundScapeCommand cmd = new SoundScapeCommand(this);
         getCommand("soundscape").setExecutor(cmd);
